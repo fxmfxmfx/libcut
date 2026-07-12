@@ -17,14 +17,6 @@ libcut is the [redlib](https://github.com/redlib-org/redlib) / [libreddit](https
 
 ## Screenshots
 
-| Feed of unseen videos | Gruvbox theme |
-|---|---|
-| ![Feed](preview3-feed.png) | ![Gruvbox](preview3-gruvbox.png) |
-
-| Video player | Author profile |
-|---|---|
-| ![Player](preview3-player.png) | ![Profile](preview3-profile.png) |
-
 > All screenshots live in the repository root. New previews may be added over time.
 
 ---
