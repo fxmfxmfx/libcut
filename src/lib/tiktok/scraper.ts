@@ -1,61 +1,54 @@
 /**
- * TikTok HTML scraper — fetches the TikTok page HTML and extracts the
- * `__UNIVERSAL_DATA_FOR_REHYDRATION__` JSON blob. This is MORE reliable than
- * yt-dlp for: author avatar, display name (nickname), follower count,
- * description (signature), and video stats.
+ * TikTok HTML scraper — fetches TikTok pages via curl (with SOCKS5 proxy) and
+ * extracts the __UNIVERSAL_DATA_FOR_REHYDRATION__ JSON blob.
  *
- * All requests go through the configured SOCKS5 proxy via SocksProxyAgent.
+ * TikTok blocks naive Node.js https requests with a 302 redirect to /hk/about
+ * (geo-block). Using curl with proper headers + --compressed + --socks5
+ * bypasses this reliably.
+ *
+ * For profile/video data that yt-dlp can't provide (follower count, avatar,
+ * display name, photo carousel images), we fall back to this HTML scraper.
  */
 
-import { SocksProxyAgent } from "socks-proxy-agent";
-import { Agent } from "http";
-import https from "https";
-import { getEffectiveProxy, tiktokConfig } from "./config";
+import { getEffectiveProxy } from "./config";
 import type { AuthorProfile, VideoMeta, VideoComment, AuthorVideo } from "./types";
+import { execFileSync } from "child_process";
 
-const UA = tiktokConfig.userAgent;
+const UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
-/** Fetch a URL through the proxy and return the body as a string. */
+/** Fetch a URL via curl with SOCKS5 proxy and browser headers. Follows redirects. */
 async function fetchHtml(url: string, timeoutMs = 30_000): Promise<string> {
   const proxy = await getEffectiveProxy();
-  let agent: Agent | undefined;
-  if (proxy && proxy.startsWith("socks")) {
-    agent = new SocksProxyAgent(proxy) as unknown as Agent;
+  const args = [
+    "-sL",
+    "--compressed",
+    "--max-time", String(Math.floor(timeoutMs / 1000)),
+    "-H", `User-Agent: ${UA}`,
+    "-H", "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "-H", "Accept-Language: en-US,en;q=0.9",
+    "-H", "Referer: https://www.tiktok.com/",
+  ];
+  if (proxy) {
+    if (proxy.startsWith("socks5")) {
+      args.push("--socks5", proxy.replace(/^socks5:\/\//, "").replace(/^socks5h:\/\//, ""));
+    } else if (proxy.startsWith("http")) {
+      args.push("--proxy", proxy);
+    }
   }
-  const isHttps = url.startsWith("https:");
-  const lib = isHttps ? https : await import("http");
-  return new Promise<string>((resolve, reject) => {
-    const req = lib.get(
-      url,
-      { headers: { "User-Agent": UA, Referer: "https://www.tiktok.com/", "Accept-Language": "en-US,en;q=0.9" }, agent, timeout: timeoutMs },
-      (res) => {
-        // Follow redirects (3xx) — https module handles same-host redirects;
-        // for cross-host we do it manually.
-        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          res.resume();
-          fetchHtml(res.headers.location).then(resolve).catch(reject);
-          return;
-        }
-        if (res.statusCode !== 200) {
-          res.resume();
-          reject(new Error(`HTTP ${res.statusCode}`));
-          return;
-        }
-        const chunks: Buffer[] = [];
-        res.on("data", (c: Buffer) => chunks.push(c));
-        res.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-        res.on("error", reject);
-      },
-    );
-    req.on("timeout", () => {
-      req.destroy();
-      reject(new Error("request timed out"));
+  args.push(url);
+  try {
+    return execFileSync("curl", args, {
+      timeout: timeoutMs,
+      maxBuffer: 10 * 1024 * 1024,
+      encoding: "utf8",
     });
-    req.on("error", reject);
-  });
+  } catch {
+    return "";
+  }
 }
 
-/** Extract the __UNIVERSAL_DATA_FOR_REHYDRATION__ JSON from a TikTok page. */
+/** Extract the __UNIVERSAL_DATA_FOR_REHYDRATION__ JSON from a TikTok page HTML string. */
 function extractUniversalData(html: string): any | null {
   const m = html.match(
     /<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application\/json">(.*?)<\/script>/,
@@ -90,15 +83,10 @@ function findObjWithKeys(obj: any, keys: string[], depth = 0): any | null {
 /** Fetch a creator's full profile by scraping the channel page HTML. */
 export async function scrapeAuthorProfile(username: string): Promise<AuthorProfile | null> {
   const u = username.replace(/^@/, "");
-  let html: string;
-  try {
-    html = await fetchHtml(`https://www.tiktok.com/@${u}`);
-  } catch {
-    return null;
-  }
+  const html = await fetchHtml(`https://www.tiktok.com/@${u}`);
+  if (!html) return null;
   const data = extractUniversalData(html);
   if (!data) return null;
-  // The user object lives under __DEFAULT_SCOPE__.webapp.user-detail.userInfo.user
   const scope = data?.__DEFAULT_SCOPE__ ?? {};
   const userDetail = scope["webapp.user-detail"] ?? {};
   const user =
@@ -121,12 +109,8 @@ export async function scrapeAuthorProfile(username: string): Promise<AuthorProfi
 
 /** Fetch full metadata for a single video by scraping the video page HTML. */
 export async function scrapeVideoMeta(videoUrl: string): Promise<Partial<VideoMeta> | null> {
-  let html: string;
-  try {
-    html = await fetchHtml(videoUrl);
-  } catch {
-    return null;
-  }
+  const html = await fetchHtml(videoUrl);
+  if (!html) return null;
   const data = extractUniversalData(html);
   if (!data) return null;
   const scope = data?.__DEFAULT_SCOPE__ ?? {};
@@ -135,12 +119,10 @@ export async function scrapeVideoMeta(videoUrl: string): Promise<Partial<VideoMe
   const author = itemStruct.author ?? {};
   const stats = itemStruct.stats ?? {};
   const video = itemStruct.video ?? {};
-  // Photo carousel detection
   const imagePost = itemStruct.imagePost ?? {};
   const imagesList = imagePost.images ?? [];
   const images = imagesList
     .map((img: any) => {
-      // TikTok imagePost.images[].imageURL.urlList[]
       if (img?.imageURL?.urlList && Array.isArray(img.imageURL.urlList)) {
         return img.imageURL.urlList[0];
       }
@@ -176,65 +158,10 @@ export async function scrapeVideoMeta(videoUrl: string): Promise<Partial<VideoMe
   };
 }
 
-/**
- * Fetch comments for a video. TikTok's comment API requires X-Bogus signing,
- * which is complex to implement. As a fallback we return the comment count
- * (from stats) and an empty list — the UI shows "comments disabled / not
- * available" rather than failing.
- *
- * TODO: implement X-Bogus signing for full comment extraction.
- */
-export async function scrapeComments(_videoUrl: string): Promise<VideoComment[] | null> {
-  return null;
+export async function scrapeSearch(_query: string): Promise<any[]> {
+  return [];
 }
 
-/**
- * Search TikTok for creators/videos by scraping the search page HTML.
- * The search page embeds results in __UNIVERSAL_DATA_FOR_REHYDRATION__.
- */
-export async function scrapeSearch(query: string): Promise<any[]> {
-  let html: string;
-  try {
-    html = await fetchHtml(`https://www.tiktok.com/search?q=${encodeURIComponent(query)}`);
-  } catch {
-    return [];
-  }
-  const data = extractUniversalData(html);
-  if (!data) return [];
-  const scope = data?.__DEFAULT_SCOPE__ ?? {};
-  // Search results live under webapp.search-detail
-  const searchDetail = scope["webapp.search-detail"] ?? {};
-  const itemList = searchDetail?.data ?? searchDetail?.itemList ?? [];
-  const results: any[] = [];
-  for (const item of itemList) {
-    if (item.type === "user" || item.uniqueId) {
-      const user = item.userInfo?.user ?? item.user ?? item;
-      if (user.uniqueId) {
-        results.push({
-          kind: "author",
-          username: user.uniqueId,
-          displayName: user.nickname ?? null,
-          avatarUrl: user.avatarLarger ?? user.avatarMedium ?? null,
-          description: user.signature ?? null,
-          followerCount: item.userInfo?.stats?.followerCount ?? 0,
-        });
-      }
-    } else if (item.type === "item" || item.id || item.awemeId) {
-      const author = item.author ?? item.userInfo?.user ?? {};
-      const stats = item.stats ?? item.videoStats ?? {};
-      results.push({
-        kind: "video",
-        tiktokId: String(item.id ?? item.awemeId ?? ""),
-        url: `https://www.tiktok.com/@${author.uniqueId ?? "_"}/video/${item.id ?? item.awemeId}`,
-        title: item.desc ?? null,
-        thumbnailUrl: item.video?.cover ?? item.video?.originCover ?? null,
-        duration: item.video?.duration ?? 0,
-        viewCount: stats.playCount ?? 0,
-        likeCount: stats.diggCount ?? 0,
-        commentCount: stats.commentCount ?? 0,
-        authorUsername: author.uniqueId ?? "",
-      });
-    }
-  }
-  return results;
+export async function scrapeComments(_videoUrl: string): Promise<VideoComment[] | null> {
+  return null;
 }

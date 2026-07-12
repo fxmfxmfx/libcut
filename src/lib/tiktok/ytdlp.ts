@@ -213,10 +213,11 @@ export class YtDlpProvider implements TikTokProvider {
   async getAuthorProfile(username: string): Promise<AuthorProfile> {
     // Prefer the HTML scraper — it reliably returns nickname (display name),
     // avatarLarger, signature and followerCount. yt-dlp's flat-playlist often
-    // returns None for all of these on TikTok channels.
+    // returns None for all of these on TikTok channels AND can crash with
+    // "Unable to extract secondary user ID".
     try {
       const scraped = await scrapeAuthorProfile(username);
-      if (scraped && scraped.displayName) {
+      if (scraped && scraped.username) {
         return scraped;
       }
     } catch {
@@ -224,69 +225,92 @@ export class YtDlpProvider implements TikTokProvider {
     }
 
     // Fallback: yt-dlp flat-playlist + first-video extraction for display name.
-    const url = authorUrl(username);
-    const data = await runYtDlpJson([
-      "-J",
-      "--flat-playlist",
-      "--playlist-end",
-      "1",
-      url,
-    ]);
+    // If yt-dlp ALSO fails, return a minimal profile so subscribe doesn't crash.
+    try {
+      const url = authorUrl(username);
+      const data = await runYtDlpJson([
+        "-J",
+        "--flat-playlist",
+        "--playlist-end",
+        "1",
+        url,
+      ]);
 
-    const handle = pickUsername(data, username.replace(/^@/, ""));
-    let displayName = pickDisplayName(data);
-    let avatar = pickAvatar(data);
-    let followerCount =
-      parseNumber(data.channel_follower_count) ||
-      parseNumber(data.followers) ||
-      parseNumber(data.follower_count) ||
-      0;
-    const videoCount =
-      parseNumber(data.playlist_count) ||
-      (Array.isArray(data.entries) ? data.entries.length : 0);
+      const handle = pickUsername(data, username.replace(/^@/, ""));
+      let displayName = pickDisplayName(data);
+      let avatar = pickAvatar(data);
+      let followerCount =
+        parseNumber(data.channel_follower_count) ||
+        parseNumber(data.followers) ||
+        parseNumber(data.follower_count) ||
+        0;
+      const videoCount =
+        parseNumber(data.playlist_count) ||
+        (Array.isArray(data.entries) ? data.entries.length : 0);
 
-    const firstEntry = Array.isArray(data.entries) ? data.entries[0] : null;
-    if ((!displayName || !avatar) && firstEntry) {
-      try {
-        const firstUrl =
-          (firstEntry.url && /^https?:/.test(String(firstEntry.url)))
-            ? String(firstEntry.url)
-            : firstEntry.original_url || `${url}/video/${firstEntry.id}`;
-        const vmeta = await runYtDlpJson(["-J", "--no-playlist", firstUrl]);
-        if (!displayName) displayName = pickDisplayName(vmeta);
-        if (!avatar) avatar = pickAvatar(vmeta);
-        if (!followerCount) followerCount = parseNumber(vmeta.channel_follower_count) || 0;
-      } catch {
-        // best-effort; keep what we have
+      const firstEntry = Array.isArray(data.entries) ? data.entries[0] : null;
+      if ((!displayName || !avatar) && firstEntry) {
+        try {
+          const firstUrl =
+            (firstEntry.url && /^https?:/.test(String(firstEntry.url)))
+              ? String(firstEntry.url)
+              : firstEntry.original_url || `${url}/video/${firstEntry.id}`;
+          const vmeta = await runYtDlpJson(["-J", "--no-playlist", firstUrl]);
+          if (!displayName) displayName = pickDisplayName(vmeta);
+          if (!avatar) avatar = pickAvatar(vmeta);
+          if (!followerCount) followerCount = parseNumber(vmeta.channel_follower_count) || 0;
+        } catch {
+          // best-effort; keep what we have
+        }
       }
-    }
 
-    return {
-      username: handle,
-      displayName,
-      avatarUrl: avatar,
-      description: data.description ?? null,
-      followerCount,
-      followingCount: 0,
-      heartCount: 0,
-      videoCount,
-    };
+      return {
+        username: handle,
+        displayName,
+        avatarUrl: avatar,
+        description: data.description ?? null,
+        followerCount,
+        followingCount: 0,
+        heartCount: 0,
+        videoCount,
+      };
+    } catch {
+      // Both scraper and yt-dlp failed — return a minimal profile so the
+      // subscribe flow doesn't crash. The user can still browse; stats will
+      // refresh when the profile is opened (re-scrape on GET /authors/[username]).
+      return {
+        username: username.replace(/^@/, ""),
+        displayName: null,
+        avatarUrl: null,
+        description: null,
+        followerCount: 0,
+        followingCount: 0,
+        heartCount: 0,
+        videoCount: 0,
+      };
+    }
   }
 
   async getAuthorVideos(username: string, limit = 30, offset = 0): Promise<AuthorVideo[]> {
     const url = authorUrl(username);
     const args = ["-J", "--flat-playlist"];
-    // yt-dlp playlist pagination is 1-indexed.
     const start = Math.max(1, offset + 1);
     args.push("--playlist-start", String(start));
     args.push("--playlist-end", String(start + limit - 1));
     args.push(url);
-    const data = await runYtDlpJson(args);
-    const entries: any[] = data.entries ?? [];
-    const base = authorUrl(username);
-    return entries
-      .filter((e) => e && (e.id || e.url))
-      .map((e) => mapEntry(e, base));
+    try {
+      const data = await runYtDlpJson(args);
+      const entries: any[] = data.entries ?? [];
+      const base = authorUrl(username);
+      return entries
+        .filter((e) => e && (e.id || e.url))
+        .map((e) => mapEntry(e, base));
+    } catch {
+      // yt-dlp failed (e.g. "Unable to extract secondary user ID") — return
+      // empty array instead of crashing. The profile page can still be opened;
+      // videos will appear after the user clicks "Check for new".
+      return [];
+    }
   }
 
   async getVideoMeta(videoUrl: string): Promise<VideoMeta> {

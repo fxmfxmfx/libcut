@@ -8,11 +8,33 @@ import http from "http";
 export const dynamic = "force-dynamic";
 
 /**
+ * Allowed hostnames for image proxying (TikTok CDN domains).
+ * Prevents SSRF — only TikTok CDN images can be proxied.
+ */
+const ALLOWED_HOST_PATTERNS = [
+  /\.tiktokcdn\.com$/i,
+  /\.tiktokcdn-eu\.com$/i,
+  /\.tiktokcdn-us\.com$/i,
+  /\.tiktokcdn-sg\.com$/i,
+  /\.tiktok\.com$/i,
+  /\.byteimg\.com$/i,
+  /\.ibytedtos\.com$/i,
+  /\.musical\.ly$/i,
+];
+
+/** Check if a hostname is in the allowed list. */
+function isAllowedHost(hostname: string): boolean {
+  return ALLOWED_HOST_PATTERNS.some((pattern) => pattern.test(hostname));
+}
+
+/**
  * GET /api/tiktok/proxy-image?url=<remote image url>
  *
  * TikTok's CDN blocks hotlinking (403 on <img> from other origins). This
  * endpoint fetches the image server-side through the same SOCKS5 proxy yt-dlp
  * uses, and re-serves it. Supports socks5://, http:// and https:// proxies.
+ *
+ * SSRF protection: only TikTok CDN domains are allowed.
  *
  * Data: URIs pass through untouched client-side (no proxy needed).
  */
@@ -21,6 +43,25 @@ export async function GET(req: NextRequest) {
   if (!url) return NextResponse.json({ error: "url required" }, { status: 400 });
   if (!/^https?:\/\//i.test(url)) {
     return NextResponse.json({ error: "only http(s) urls" }, { status: 400 });
+  }
+
+  // SSRF protection: only allow TikTok CDN domains.
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(url);
+  } catch {
+    return NextResponse.json({ error: "invalid url" }, { status: 400 });
+  }
+  const hostname = parsedUrl.hostname;
+  if (!isAllowedHost(hostname)) {
+    return NextResponse.json({ error: "domain not allowed" }, { status: 403 });
+  }
+
+  // Block internal/private IPs (defense in depth — the host check above
+  // already blocks non-TikTok domains, but this catches edge cases).
+  const ipLike = /^(\d{1,3}\.){3}\d{1,3}$/;
+  if (ipLike.test(hostname)) {
+    return NextResponse.json({ error: "direct IP not allowed" }, { status: 403 });
   }
 
   const proxy = await getEffectiveProxy();
@@ -36,8 +77,6 @@ export async function GET(req: NextRequest) {
     if (proxy.startsWith("socks")) {
       agent = new SocksProxyAgent(proxy) as unknown as Agent;
     } else {
-      // http/https proxy — use undici's ProxyAgent via global dispatcher fallback.
-      // For simplicity, fall back to direct (http proxies for images are rare).
       agent = undefined;
     }
   }

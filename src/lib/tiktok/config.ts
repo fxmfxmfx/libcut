@@ -62,9 +62,11 @@ export async function getEffectiveProxy(): Promise<string | null> {
   try {
     const enabled = await db.setting.findUnique({ where: { key: "proxyEnabled" } });
     const url = await db.setting.findUnique({ where: { key: "proxyUrl" } });
-    // Default: enabled. If explicitly "false", disable.
+    // If explicitly disabled in settings, return null.
     if (enabled && enabled.value === "false") return null;
+    // If a URL is set in settings, use it.
     if (url && url.value.trim() !== "") return url.value.trim();
+    // Otherwise fall through to env default (TIKTOK_PROXY).
   } catch {
     // DB not ready yet (e.g. during init) — fall through to env default.
   }
