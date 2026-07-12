@@ -2,10 +2,12 @@
  * tiktok-comments mini-service.
  *
  * Extracts TikTok comments using a headless Chromium (puppeteer + stealth).
- * Accepts GDPR consent, clicks the comment icon, captures the signed comment
- * API responses. Captures BOTH top-level comments AND reply threads.
+ * - Accepts GDPR consent (required for EEA proxy regions).
+ * - Clicks the comment icon to trigger the signed comment API request.
+ * - Captures top-level comments AND reply threads (clicks "View replies").
+ * - Sorts by popularity (likes descending).
  *
- * Port: 3040 (hardcoded). The Next.js app calls this via localhost.
+ * Port: 3040. The Next.js app calls this via localhost.
  */
 
 import { createServer } from "http";
@@ -52,29 +54,19 @@ interface Comment {
   replyCount: number;
 }
 
-/** Accept TikTok's GDPR consent banner (required for EEA proxy regions). */
-async function acceptConsent(page: any) {
-  await page.evaluate(() => {
-    const opts = "path=/; domain=.tiktok.com; max-age=31536000; SameSite=None; Secure";
-    document.cookie = `tiktok_web_cookie_consent=1; ${opts}`;
-    document.cookie = `cookie-consent=1; ${opts}`;
-    document.cookie = `EU_COOKIE_CONSENT=1; ${opts}`;
-  });
-  await page.evaluate(() => {
-    const btns = Array.from(document.querySelectorAll("button, a, div"));
-    const agree = btns.find((b) => {
-      const t = (b.textContent || "").trim().toLowerCase();
-      return ["accept all", "agree", "got it", "accept", "i agree", "agree all", "allow all", "разрешить все", "принять все"].includes(t);
-    });
-    if (agree) (agree as HTMLElement).click();
-  });
-  await new Promise((r) => setTimeout(r, 1500));
-}
-
 /** Parse a TikTok comment object from the API response. */
-function parseComment(c: any, parentId: string | null = null): Comment | null {
+function parseComment(c: any): Comment | null {
   const id = String(c.cid ?? c.id ?? c.comment_id ?? "");
   if (!id) return null;
+  // Top-level comments: reply_comment is the parent object (if this is a reply).
+  // Reply comments (from reply API): reply_id is the parent comment id (reply_comment is null).
+  // reply_id can be 0, "0", or a real id — use Number() to normalize.
+  const replyIdNum = Number(c.reply_id);
+  const parentId = c.reply_comment?.cid
+    ? String(c.reply_comment.cid)
+    : replyIdNum > 0
+      ? String(c.reply_id)
+      : null;
   return {
     id,
     authorName: c.user?.nickname ?? c.user?.unique_id ?? c.nickname ?? "TikTok user",
@@ -83,7 +75,7 @@ function parseComment(c: any, parentId: string | null = null): Comment | null {
     likeCount: c.digg_count ?? c.like_count ?? 0,
     postedAt: c.create_time ? new Date(c.create_time * 1000).toISOString() : null,
     parentId,
-    replyCount: c.reply_comment ?? c.reply_count ?? 0,
+    replyCount: c.reply_comment_total ?? 0,
   };
 }
 
@@ -95,40 +87,22 @@ async function fetchComments(videoUrl: string, limit = 30): Promise<Comment[]> {
 
   const allComments: Comment[] = [];
   const seenIds = new Set<string>();
-  // Map of top-level comment id -> its replies (for threading)
-  const repliesMap = new Map<string, Comment[]>();
 
-  // Intercept BOTH top-level comment API and reply API responses.
+  // Intercept BOTH top-level and reply comment API responses.
   page.on("response", async (res: any) => {
     const u = res.url();
-    if (u.includes("/api/comment/list") || u.includes("/api/comment/list/reply")) {
+    if (u.includes("/api/comment/list")) {
       try {
         const text = await res.text();
         if (!text) return;
         let json: any;
         try { json = JSON.parse(text); } catch { return; }
-        const isReply = u.includes("/reply");
         const cs = json?.comments ?? [];
         for (const c of cs) {
-          const parsed = parseComment(c, isReply ? null : null);
+          const parsed = parseComment(c);
           if (!parsed || seenIds.has(parsed.id)) continue;
           seenIds.add(parsed.id);
-          if (isReply) {
-            // Reply — try to find its parent from the reply_comment field
-            const parentCid = c.reply_comment ? String(c.reply_comment) : null;
-            parsed.parentId = parentCid;
-            if (parentCid && repliesMap.has(parentCid)) {
-              repliesMap.get(parentCid)!.push(parsed);
-            } else {
-              // Orphan reply — add to top level
-              allComments.push(parsed);
-            }
-          } else {
-            allComments.push(parsed);
-            if (parsed.replyCount > 0) {
-              repliesMap.set(parsed.id, []);
-            }
-          }
+          allComments.push(parsed);
         }
       } catch {
         // response read error
@@ -137,71 +111,76 @@ async function fetchComments(videoUrl: string, limit = 30): Promise<Comment[]> {
   });
 
   try {
+    // networkidle2 ensures the SPA is fully rendered (required for consent + comment icon).
     await page.goto(videoUrl, { waitUntil: "networkidle2", timeout: 60_000 });
-    await new Promise((r) => setTimeout(r, 2000));
 
-    // Accept GDPR consent (EEA proxy regions show a banner that blocks comments).
-    await acceptConsent(page);
-    // Reload to apply consent cookies.
+    // Accept GDPR consent by setting cookies, then reload to apply them.
+    // Reload with networkidle2 is required — without it, consent wall blocks the comment click.
+    await page.evaluate(() => {
+      const opts = "path=/; domain=.tiktok.com; max-age=31536000; SameSite=None; Secure";
+      document.cookie = `tiktok_web_cookie_consent=1; ${opts}`;
+      document.cookie = `cookie-consent=1; ${opts}`;
+      document.cookie = `EU_COOKIE_CONSENT=1; ${opts}`;
+    });
     await page.reload({ waitUntil: "networkidle2", timeout: 60_000 });
-    await new Promise((r) => setTimeout(r, 3000));
 
     // Click the comment icon — TikTok fires the signed comment API request.
-    const commentSelectors = [
-      '[data-e2e="comment-icon"]',
-      '[data-e2e="feed-active-comment"]',
-      '[class*="CommentButton"]',
-      'button[aria-label*="comment" i]',
-    ];
-    let clicked = false;
-    for (const sel of commentSelectors) {
-      try {
-        const el = await page.$(sel);
-        if (el) {
-          await el.evaluate((e: any) => e.scrollIntoView({ block: "center" }));
-          await new Promise((r) => setTimeout(r, 200));
-          await el.click({ delay: 50 });
-          clicked = true;
-          break;
-        }
-      } catch { /* try next */ }
-    }
-    if (!clicked) {
-      await page.evaluate(() => {
-        const els = Array.from(document.querySelectorAll('[data-e2e="comment-icon"]'));
-        const btn = els.find((e) => (e as HTMLElement).offsetParent !== null) as HTMLElement | undefined;
-        if (btn) btn.click();
-      });
+    const el = await page.$('[data-e2e="comment-icon"]');
+    if (el) {
+      await el.evaluate((e: any) => e.scrollIntoView({ block: "center" }));
+      await new Promise((r) => setTimeout(r, 200));
+      await el.click({ delay: 50 });
     }
 
-    // Wait for the first batch of comments (up to 8s).
-    for (let i = 0; i < 8 && allComments.length === 0; i++) {
+    // Wait for the first batch of comments (up to 10s — be generous to avoid races).
+    for (let i = 0; i < 10 && allComments.length === 0; i++) {
       await new Promise((r) => setTimeout(r, 1000));
     }
+    // Extra settle time for async response handlers to finish parsing.
+    await new Promise((r) => setTimeout(r, 1500));
 
-    // Click "View N replies" buttons to load reply threads for top comments.
-    // TikTok loads replies via a separate API call when you click this.
+    // Scroll the comment panel to render all comments + their "View replies" buttons.
+    for (let i = 0; i < 3; i++) {
+      await page.evaluate(() => {
+        const c = document.querySelector('[class*="CommentListContainer"], [data-e2e="comment-list"]');
+        if (c) (c as HTMLElement).scrollBy(0, 1500);
+      });
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    await new Promise((r) => setTimeout(r, 500));
+
+    // Click "View N replies" buttons by text content (TikTok has no data-e2e attr for these).
     try {
-      const viewReplyBtns = await page.$$('[data-e2e="view-more-reply"], [class*="ViewMoreReply"], [data-e2e*="reply" i]');
-      for (let i = 0; i < Math.min(viewReplyBtns.length, 5); i++) {
-        try {
-          await viewReplyBtns[i].click({ delay: 50 });
-          await new Promise((r) => setTimeout(r, 800));
-        } catch { /* ignore */ }
-      }
+      const clicked = await page.evaluate(() => {
+        const all = Array.from(document.querySelectorAll("div, span, p, button"));
+        const replyBtns = all.filter((e) => {
+          const t = (e.textContent || "").trim().toLowerCase();
+          return /^(view\s+)?\d+\s+repl(y|ies)/.test(t) || t === "view replies";
+        });
+        let count = 0;
+        for (const b of replyBtns) {
+          try { (b as HTMLElement).click(); count++; } catch {}
+        }
+        return count;
+      });
+      // Wait for reply API responses.
+      await new Promise((r) => setTimeout(r, 2500));
     } catch { /* ignore */ }
 
     // Sort top-level comments by likes (popularity) descending.
-    allComments.sort((a, b) => b.likeCount - a.likeCount);
+    const topLevel = allComments
+      .filter((c) => !c.parentId)
+      .sort((a, b) => b.likeCount - a.likeCount);
+    const replies = allComments
+      .filter((c) => c.parentId)
+      .sort((a, b) => b.likeCount - a.likeCount);
 
-    // Build the final list: top-level + their replies (threaded).
+    // Build threaded result: top comments + their replies.
     const result: Comment[] = [];
-    for (const top of allComments.slice(0, limit)) {
+    for (const top of topLevel.slice(0, limit)) {
       result.push(top);
-      const replies = repliesMap.get(top.id) ?? [];
-      // Sort replies by likes too
-      replies.sort((a, b) => b.likeCount - a.likeCount);
-      result.push(...replies.slice(0, 10)); // max 10 replies per top comment
+      const topReplies = replies.filter((r) => r.parentId === top.id);
+      result.push(...topReplies.slice(0, 10));
     }
 
     await page.close();
