@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Play, Eye, Heart, MessageCircle, CheckCircle2, Images } from "lucide-react";
 import type { VideoInfo } from "@/lib/tiktok/queries";
 import { useView } from "@/lib/tiktok/store";
+import { useClientData } from "@/lib/tiktok/client-data";
 import { formatCount, formatDuration, timeAgo } from "@/lib/tiktok/format";
 import { cn } from "@/lib/utils";
 
@@ -19,9 +20,12 @@ export function VideoCard({ video, showAuthor = true, showSeen = false }: Props)
   const openAuthor = useView((s) => s.openAuthor);
   const t = useView((s) => s.t);
   const lang = useView((s) => s.lang);
+  const dataMode = useView((s) => s.dataMode);
+  const clientIsSeen = useClientData((s) => s.isSeen);
 
   const author = video.author;
-  const seen = !!video.seen;
+  // In client mode, check localStorage; otherwise use the API's seen field.
+  const seen = dataMode === "client" ? clientIsSeen(video.id) : !!video.seen;
   const isGallery = !!video.isGallery;
 
   return (

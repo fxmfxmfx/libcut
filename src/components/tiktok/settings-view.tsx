@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Settings as SettingsIcon, Save, Trash2, Loader2, RefreshCw } from "lucide-react";
+import { Settings as SettingsIcon, Save, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { useSettings, useUpdateSettings, useStatus, useProxyCheck } from "@/lib/tiktok/queries";
+import { useSettings, useUpdateSettings } from "@/lib/tiktok/queries";
 import { useView } from "@/lib/tiktok/store";
 import { useClientData } from "@/lib/tiktok/client-data";
 import { useToast } from "@/hooks/use-toast";
@@ -37,53 +37,42 @@ const ACCENTS = ["#fe2c55", "#25f4ee", "#a78bfa", "#34d399", "#fbbf24", "#60a5fa
 export function SettingsView() {
   const { data } = useSettings();
   const update = useUpdateSettings();
-  const status = useStatus();
-  const proxyCheck = useProxyCheck();
   const { t, setLang, setTheme, setAccent, setCustomCss, setAutoMarkSeen } = useView();
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const [proxyEnabled, setProxyEnabled] = useState(true);
-  const [proxyUrl, setProxyUrl] = useState("");
   const [customCss, setCss] = useState("");
   const [clearing, setClearing] = useState(false);
 
   // Sync local form state once settings load.
   useEffect(() => {
     if (data) {
-      setProxyEnabled(data.settings.proxyEnabled !== "false");
-      setProxyUrl(data.settings.proxyUrl);
       setCss(data.settings.customCss);
     }
   }, [data]);
 
-  async function saveProxy() {
-    await update.mutateAsync({
-      proxyEnabled: String(proxyEnabled),
-      proxyUrl,
-    });
-    toast({ description: t("settings.saved") });
-  }
+  const dataMode = useView((s) => s.dataMode);
 
+  // In client mode, don't write to server DB — only update localStorage via store.
   function changeLang(l: string) {
     setLang(l as Lang);
-    update.mutate({ language: l });
+    if (dataMode !== "client") update.mutate({ language: l });
   }
   function changeTheme(th: string) {
     setTheme(th);
-    update.mutate({ theme: th });
+    if (dataMode !== "client") update.mutate({ theme: th });
   }
   function changeAccent(c: string) {
     setAccent(c);
-    update.mutate({ accent: c });
+    if (dataMode !== "client") update.mutate({ accent: c });
   }
   function changeAutoMark(b: boolean) {
     setAutoMarkSeen(b);
-    update.mutate({ autoMarkSeen: String(b) });
+    if (dataMode !== "client") update.mutate({ autoMarkSeen: String(b) });
   }
   function saveCss() {
     setCustomCss(customCss);
-    update.mutate({ customCss });
+    if (dataMode !== "client") update.mutate({ customCss });
     toast({ description: t("settings.saved") });
   }
 
@@ -198,44 +187,6 @@ export function SettingsView() {
         </div>
       </Card>
 
-      {/* Proxy */}
-      <Card className="space-y-4 p-5">
-        <h2 className="text-sm font-semibold">{t("settings.proxy")}</h2>
-        <p className="text-xs text-muted-foreground">{t("settings.proxy.desc")}</p>
-
-        <div className="flex items-center justify-between">
-          <Label htmlFor="proxyEnabled" className="text-sm">
-            {t("settings.proxy.enabled")}
-          </Label>
-          <Switch id="proxyEnabled" checked={proxyEnabled} onCheckedChange={setProxyEnabled} />
-        </div>
-
-        <div>
-          <Label htmlFor="proxyUrl" className="text-sm">
-            {t("settings.proxy.url")}
-          </Label>
-          <Input
-            id="proxyUrl"
-            value={proxyUrl}
-            onChange={(e) => setProxyUrl(e.target.value)}
-            placeholder={t("settings.proxy.url.placeholder")}
-            className="mt-1.5 font-mono text-xs"
-          />
-          {data?.envProxy && (
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              {t("settings.proxy.env", { url: data.envProxy })}
-            </p>
-          )}
-        </div>
-
-        <div className="flex justify-end">
-          <Button size="sm" onClick={saveProxy} disabled={update.isPending} className="gap-2">
-            {update.isPending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-            {t("settings.save")}
-          </Button>
-        </div>
-      </Card>
-
       {/* Behavior */}
       <Card className="space-y-4 p-5">
         <h2 className="text-sm font-semibold">{t("settings.behavior")}</h2>
@@ -275,52 +226,6 @@ export function SettingsView() {
           <p className="mt-2 text-[11px] text-muted-foreground">
             {t("settings.dataMode.env")}
           </p>
-        </div>
-      </Card>
-
-      {/* System Info */}
-      <Card className="space-y-3 p-5">
-        <h2 className="text-sm font-semibold">{t("settings.system")}</h2>
-        <div className="space-y-1.5 text-xs">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Demo mode</span>
-            <span className="font-mono">{status.data?.demoMode ? "on" : "off"}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">yt-dlp path</span>
-            <span className="font-mono">{status.data?.ytdlpPath ?? "—"}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Cache TTL</span>
-            <span className="font-mono">{status.data?.cacheTtlMin ?? "—"} min</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Env proxy</span>
-            <span className="font-mono truncate max-w-[200px]">{data?.envProxy || "—"}</span>
-          </div>
-        </div>
-        <Separator />
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium">{t("settings.proxy.test")}</p>
-            <p className="text-xs text-muted-foreground">
-              {proxyCheck.isLoading
-                ? t("status.checking")
-                : proxyCheck.data?.ok
-                  ? `✓ ${t("status.proxy")}`
-                  : proxyCheck.data?.error
-                    ? `✗ ${proxyCheck.data.error}`
-                    : "—"}
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-2"
-            onClick={() => proxyCheck.refetch()}
-          >
-            <RefreshCw className="size-4" /> {t("settings.proxy.recheck")}
-          </Button>
         </div>
       </Card>
 

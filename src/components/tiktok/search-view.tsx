@@ -11,6 +11,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { VideoCard } from "./video-card";
 import { EmptyState } from "./empty-state";
 import { SubscribeDialog } from "./subscribe-dialog";
+import { useClientData } from "@/lib/tiktok/client-data";
 import { formatCount } from "@/lib/tiktok/format";
 
 export function SearchView() {
@@ -130,7 +131,14 @@ function AuthorResultCard({
   subscribed?: boolean;
   source?: string;
 }) {
-  const { openAuthor, t, lang } = useView();
+  const { openAuthor, t, lang, dataMode } = useView();
+  const clientSubs = useClientData((s) => s.subscriptions);
+  // In client mode, check subscription from localStorage.
+  const isSubscribed = username
+    ? (dataMode === "client"
+      ? clientSubs.some((s) => s.username === username)
+      : subscribed)
+    : false;
   if (!username) return null;
   return (
     <Card className="p-4 transition-colors hover:border-primary/40">
@@ -142,7 +150,7 @@ function AuthorResultCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="truncate font-semibold">{displayName ?? username}</span>
-            {subscribed && <Badge variant="secondary" className="text-[10px]">{t("author.subscribed")}</Badge>}
+            {isSubscribed && <Badge variant="secondary" className="text-[10px]">{t("author.subscribed")}</Badge>}
             {source === "library" && (
               <Badge variant="outline" className="text-[10px] text-primary">{t("search.inLibrary")}</Badge>
             )}
@@ -159,7 +167,7 @@ function AuthorResultCard({
           )}
         </div>
       </button>
-      {!subscribed && (
+      {!isSubscribed && (
         <div className="mt-3 flex justify-end">
           <SubscribeDialog username={username}>
             <Button size="sm" variant="outline" className="gap-1.5">

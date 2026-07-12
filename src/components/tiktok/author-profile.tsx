@@ -13,6 +13,7 @@ import {
   useMarkAllSeen,
 } from "@/lib/tiktok/queries";
 import { useView } from "@/lib/tiktok/store";
+import { useClientData } from "@/lib/tiktok/client-data";
 import { useToast } from "@/hooks/use-toast";
 import { formatCount, timeAgo, fullDate } from "@/lib/tiktok/format";
 import { VideoGrid } from "./video-grid";
@@ -27,7 +28,10 @@ export function AuthorProfile({ username }: { username: string }) {
   const unsubscribe = useUnsubscribe();
   const subscribe = useSubscribe();
   const markAllSeen = useMarkAllSeen();
-  const { closeAuthor, t, lang } = useView();
+  const { closeAuthor, t, lang, dataMode } = useView();
+  const clientIsSeen = useClientData((s) => s.isSeen);
+  const clientMarkAllSeen = useClientData((s) => s.markSeen);
+  const clientSubs = useClientData((s) => s.subscriptions);
   const { toast } = useToast();
   const [loadingMore, setLoadingMore] = useState(false);
   const [olderOffset, setOlderOffset] = useState(0);
@@ -67,6 +71,20 @@ export function AuthorProfile({ username }: { username: string }) {
   }
 
   async function handleMarkAllSeen() {
+    if (dataMode === "client") {
+      // Client mode: mark all videos as seen in localStorage
+      if (data) {
+        let count = 0;
+        for (const v of data.videos) {
+          if (!clientIsSeen(v.id)) {
+            clientMarkAllSeen(v.id);
+            count++;
+          }
+        }
+        toast({ description: t("author.markAllSeen.done", { n: count }) });
+      }
+      return;
+    }
     try {
       const res = await markAllSeen.mutateAsync(username);
       toast({ description: t("author.markAllSeen.done", { n: res.marked }) });
@@ -77,6 +95,26 @@ export function AuthorProfile({ username }: { username: string }) {
 
   async function handleToggleSub() {
     if (!data) return;
+    if (dataMode === "client") {
+      // Client mode: subscribe/unsubscribe via localStorage
+      const clientSubs = useClientData.getState().subscriptions;
+      const isSubbed = clientSubs.some((s) => s.username === data.author.username);
+      if (isSubbed) {
+        useClientData.getState().unsubscribe(data.author.username);
+        toast({ description: t("subs.unsubscribe") });
+      } else {
+        useClientData.getState().subscribe({
+          username: data.author.username,
+          displayName: data.author.displayName,
+          avatarUrl: data.author.avatarUrl,
+          description: data.author.description,
+          followerCount: data.author.followerCount,
+          subscribedAt: Date.now(),
+        });
+        toast({ description: t("sub.dialog.success") });
+      }
+      return;
+    }
     if (data.author.subscribed) {
       if (confirm(t("subs.unsubscribe"))) {
         await unsubscribe.mutateAsync(data.author.id);
@@ -126,7 +164,14 @@ export function AuthorProfile({ username }: { username: string }) {
   }
 
   const { author, videos } = data;
-  const hasUnseen = videos.some((v) => !v.seen);
+  // In client mode, check seen-state from localStorage; otherwise from API.
+  const hasUnseen = dataMode === "client"
+    ? videos.some((v) => !clientIsSeen(v.id))
+    : videos.some((v) => !v.seen);
+  // In client mode, check subscription from localStorage.
+  const isSubscribed = dataMode === "client"
+    ? clientSubs.some((s) => s.username === author?.username)
+    : author?.subscribed;
 
   return (
     <div className="space-y-5">
@@ -144,7 +189,7 @@ export function AuthorProfile({ username }: { username: string }) {
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-bold">{author.displayName ?? author.username}</h1>
-            {author.subscribed ? (
+            {isSubscribed ? (
               <Badge className="gap-1 bg-primary text-primary-foreground">
                 <UserCheck className="size-3" /> {t("author.subscribed")}
               </Badge>
@@ -201,7 +246,7 @@ export function AuthorProfile({ username }: { username: string }) {
             {check.isPending ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
             {t("author.check")}
           </Button>
-          {hasUnseen && author.subscribed && (
+          {hasUnseen && isSubscribed && (
             <Button
               variant="outline"
               size="sm"
@@ -212,7 +257,7 @@ export function AuthorProfile({ username }: { username: string }) {
               <CheckCheck className="size-4" /> {t("author.markAllSeen")}
             </Button>
           )}
-          {author.subscribed ? (
+          {isSubscribed ? (
             <Button variant="outline" size="sm" className="gap-2" onClick={handleToggleSub} disabled={unsubscribe.isPending}>
               <UserCheck className="size-4" /> {t("subs.unsubscribe")}
             </Button>
