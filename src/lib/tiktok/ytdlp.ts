@@ -275,19 +275,12 @@ export class YtDlpProvider implements TikTokProvider {
         videoCount,
       };
     } catch {
-      // Both scraper and yt-dlp failed — return a minimal profile so the
-      // subscribe flow doesn't crash. The user can still browse; stats will
-      // refresh when the profile is opened (re-scrape on GET /authors/[username]).
-      return {
-        username: username.replace(/^@/, ""),
-        displayName: null,
-        avatarUrl: null,
-        description: null,
-        followerCount: 0,
-        followingCount: 0,
-        heartCount: 0,
-        videoCount: 0,
-      };
+      // Both scraper and yt-dlp failed — throw an error so the caller knows
+      // the profile doesn't exist or is unreachable.
+      throw new TikTokError(
+        `Could not load @${username}: profile not found or proxy not working`,
+        "not_found",
+      );
     }
   }
 

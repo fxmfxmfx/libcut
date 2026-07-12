@@ -122,6 +122,15 @@ export function useStatus() {
   });
 }
 
+export function useProxyCheck() {
+  return useQuery({
+    queryKey: ["proxy-check"],
+    queryFn: () => api.get<{ ok: boolean; proxy: string | null; error: string | null }>("/api/tiktok/proxy-check"),
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
 export function useFeed() {
   return useQuery({
     queryKey: ["feed"],

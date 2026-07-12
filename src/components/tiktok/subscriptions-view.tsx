@@ -48,7 +48,7 @@ export function SubscriptionsView() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {list.map((a) => (
-            <Card key={a.id} className="group relative p-4 transition-colors hover:border-primary/40">
+            <Card key={a.id} className="group relative flex flex-col p-4 transition-colors hover:border-primary/40">
               <button
                 onClick={() => openAuthor(a.username)}
                 className="flex w-full items-start gap-3 text-left"
@@ -84,7 +84,7 @@ export function SubscriptionsView() {
                   </div>
                 </div>
               </button>
-              <div className="mt-3 flex justify-end">
+              <div className="mt-auto flex justify-end pt-3">
                 <Button
                   variant="ghost"
                   size="sm"

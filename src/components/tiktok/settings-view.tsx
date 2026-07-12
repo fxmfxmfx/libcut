@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Settings as SettingsIcon, Save, Trash2, Loader2 } from "lucide-react";
+import { Settings as SettingsIcon, Save, Trash2, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { useSettings, useUpdateSettings } from "@/lib/tiktok/queries";
+import { useSettings, useUpdateSettings, useStatus, useProxyCheck } from "@/lib/tiktok/queries";
 import { useView } from "@/lib/tiktok/store";
 import { useToast } from "@/hooks/use-toast";
 import { availableLangs, type Lang } from "@/lib/tiktok/i18n";
@@ -36,6 +36,8 @@ const ACCENTS = ["#fe2c55", "#25f4ee", "#a78bfa", "#34d399", "#fbbf24", "#60a5fa
 export function SettingsView() {
   const { data } = useSettings();
   const update = useUpdateSettings();
+  const status = useStatus();
+  const proxyCheck = useProxyCheck();
   const { t, setLang, setTheme, setAccent, setCustomCss, setAutoMarkSeen } = useView();
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -241,6 +243,52 @@ export function SettingsView() {
             checked={useView.getState().autoMarkSeen}
             onCheckedChange={changeAutoMark}
           />
+        </div>
+      </Card>
+
+      {/* System Info */}
+      <Card className="space-y-3 p-5">
+        <h2 className="text-sm font-semibold">{t("settings.system")}</h2>
+        <div className="space-y-1.5 text-xs">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Demo mode</span>
+            <span className="font-mono">{status.data?.demoMode ? "on" : "off"}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">yt-dlp path</span>
+            <span className="font-mono">{status.data?.ytdlpPath ?? "—"}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Cache TTL</span>
+            <span className="font-mono">{status.data?.cacheTtlMin ?? "—"} min</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Env proxy</span>
+            <span className="font-mono truncate max-w-[200px]">{data?.envProxy || "—"}</span>
+          </div>
+        </div>
+        <Separator />
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium">{t("settings.proxy.test")}</p>
+            <p className="text-xs text-muted-foreground">
+              {proxyCheck.isLoading
+                ? t("status.checking")
+                : proxyCheck.data?.ok
+                  ? `✓ ${t("status.proxy")}`
+                  : proxyCheck.data?.error
+                    ? `✗ ${proxyCheck.data.error}`
+                    : "—"}
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={() => proxyCheck.refetch()}
+          >
+            <RefreshCw className="size-4" /> {t("settings.proxy.recheck")}
+          </Button>
         </div>
       </Card>
 
