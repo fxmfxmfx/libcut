@@ -17,7 +17,11 @@ libcut is the [redlib](https://github.com/redlib-org/redlib) / [libreddit](https
 
 ## Screenshots
 
-> All screenshots live in the repository root. New previews may be added over time.
+<img width="1629" height="901" alt="image" src="https://github.com/user-attachments/assets/27c30a81-a9fd-4ad8-88e6-63c71661fbdf" />
+<img width="1611" height="876" alt="image" src="https://github.com/user-attachments/assets/f0ca2708-765a-41d9-9974-4007e53c9e4d" />
+<img width="1611" height="880" alt="image" src="https://github.com/user-attachments/assets/9ab0fee6-8f1f-4172-941f-e02d9b4a7375" />
+<img width="1617" height="880" alt="image" src="https://github.com/user-attachments/assets/3d691452-40d3-45fa-9661-b29c7fc8ba48" />
+
 
 ---
 
