@@ -15,8 +15,13 @@ import { useStatus } from "@/lib/tiktok/queries";
 
 export default function Home() {
   const { activeTab, selectedAuthor, openVideoId } = useView();
-  // Kick off init (seed demo data + cache cleanup) as early as possible.
-  useStatus();
+  const status = useStatus();
+  // Kick off init + sync dataMode from env config.
+  useEffect(() => {
+    if (status.data?.dataMode) {
+      useView.getState().setDataMode(status.data.dataMode);
+    }
+  }, [status.data?.dataMode]);
 
   useEffect(() => {
     if (openVideoId) {

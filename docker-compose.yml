@@ -32,6 +32,7 @@ services:
       TIKTOK_CACHE_TTL_MIN: ${TIKTOK_CACHE_TTL_MIN:-10}
       TIKTOK_SOCKET_TIMEOUT: ${TIKTOK_SOCKET_TIMEOUT:-30}
       TIKTOK_RETRIES: ${TIKTOK_RETRIES:-3}
+      DATA_MODE: ${DATA_MODE:-local}
       # --- Hardcoded for the container layout (do not override via .env) ---
       DATABASE_URL: file:/app/db/custom.db
       TIKTOK_CACHE_DIR: /app/cache/videos

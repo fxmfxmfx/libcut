@@ -14,5 +14,6 @@ export async function GET(_req: NextRequest) {
     proxyConfigured: !!proxy,
     cacheTtlMin: tiktokConfig.cacheTtlMs / 60000,
     ytdlpPath: tiktokConfig.ytdlpPath,
+    dataMode: tiktokConfig.dataMode,
   });
 }

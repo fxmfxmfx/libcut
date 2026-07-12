@@ -47,9 +47,6 @@ function SettingsSync() {
     if (s.accent) setAccent(s.accent);
     if (typeof s.customCss === "string") setCustomCss(s.customCss);
     setAutoMarkSeen(s.autoMarkSeen !== "false");
-    if (s.dataMode === "client" || s.dataMode === "local") {
-      useView.getState().setDataMode(s.dataMode);
-    }
   }, [data, setLang, setTheme, setAccent, setCustomCss, setAutoMarkSeen]);
 
   return null;

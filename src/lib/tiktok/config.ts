@@ -9,22 +9,16 @@
  */
 
 export interface TikTokConfig {
-  /** yt-dlp binary path. */
   ytdlpPath: string;
-  /** Request timeout in seconds (per-attempt). */
   socketTimeout: number;
-  /** Number of retries yt-dlp should attempt. */
   retries: number;
-  /** Directory for the temp video cache. */
   cacheDir: string;
-  /** Cache TTL in ms (default 10 minutes). */
   cacheTtlMs: number;
-  /** Demo mode: serve sample data instead of hitting TikTok. */
   demoMode: boolean;
-  /** User agent sent by yt-dlp. */
   userAgent: string;
-  /** Default proxy from env (fallback when no DB setting). */
   defaultProxy: string | null;
+  /** Data storage mode: "local" = SQLite on server, "client" = browser localStorage. */
+  dataMode: "local" | "client";
 }
 
 function envBool(name: string, def: boolean): boolean {
@@ -49,6 +43,7 @@ export const tiktokConfig: TikTokConfig = {
     process.env.TIKTOK_UA ||
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
   defaultProxy: process.env.TIKTOK_PROXY && process.env.TIKTOK_PROXY.trim() !== "" ? process.env.TIKTOK_PROXY.trim() : null,
+  dataMode: (process.env.DATA_MODE === "client" ? "client" : "local") as "local" | "client",
 };
 
 /**

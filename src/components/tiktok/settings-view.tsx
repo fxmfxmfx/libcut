@@ -252,44 +252,29 @@ export function SettingsView() {
 
         <Separator />
 
-        {/* Data storage mode */}
+        {/* Data storage mode (read-only — set via DATA_MODE env var) */}
         <div>
           <Label className="text-sm font-semibold">{t("settings.dataMode")}</Label>
-          <div className="mt-2 grid gap-2 sm:grid-cols-2">
-            <button
-              onClick={() => {
-                useView.getState().setDataMode("local");
-                update.mutate({ dataMode: "local" });
-              }}
-              className={`rounded-lg border p-3 text-left text-sm transition-colors ${
-                useView.getState().dataMode === "local"
-                  ? "border-primary bg-primary/10"
-                  : "border-border/60 hover:border-primary/40"
-              }`}
-            >
-              <div className="font-medium">{t("settings.dataMode.local")}</div>
-              <p className="mt-1 text-[11px] text-muted-foreground">{t("settings.dataMode.local.desc")}</p>
-            </button>
-            <button
-              onClick={() => {
-                useView.getState().setDataMode("client");
-                update.mutate({ dataMode: "client" });
-              }}
-              className={`rounded-lg border p-3 text-left text-sm transition-colors ${
-                useView.getState().dataMode === "client"
-                  ? "border-primary bg-primary/10"
-                  : "border-border/60 hover:border-primary/40"
-              }`}
-            >
-              <div className="font-medium">{t("settings.dataMode.client")}</div>
-              <p className="mt-1 text-[11px] text-muted-foreground">{t("settings.dataMode.client.desc")}</p>
-            </button>
+          <div className="mt-2 rounded-lg border border-border/60 p-3 text-sm">
+            <div className="font-medium">
+              {useView.getState().dataMode === "client"
+                ? t("settings.dataMode.client")
+                : t("settings.dataMode.local")}
+            </div>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {useView.getState().dataMode === "client"
+                ? t("settings.dataMode.client.desc")
+                : t("settings.dataMode.local.desc")}
+            </p>
           </div>
           {useView.getState().dataMode === "local" && (
             <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-400">
               {t("settings.dataMode.warning")}
             </div>
           )}
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            {t("settings.dataMode.env")}
+          </p>
         </div>
       </Card>
 

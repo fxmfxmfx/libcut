@@ -132,6 +132,7 @@ All configuration is via environment variables, set in `.env` (auto-picked-up by
 |---|---|---|
 | `DEMO_MODE` | `false` (Docker) / `true` (local dev) | `true` serves built-in demo data and never contacts TikTok. `false` makes real requests through `yt-dlp` + proxy. |
 | `TIKTOK_PROXY` | _(empty)_ | SOCKS5 proxy for `yt-dlp` and the HTML scraper. Format: `socks5://user:pass@host:port`. Can be overridden at runtime in Settings. |
+| `DATA_MODE` | `local` | Data storage mode: `local` = SQLite on server (default), `client` = browser localStorage (for public instances). See [Data Storage Modes](#data-storage-modes) below. |
 | `TIKTOK_CACHE_TTL_MIN` | `10` | Lifetime of the temp video cache, in minutes. After expiry the `.mp4` file is deleted (DB metadata is kept). |
 | `TIKTOK_SOCKET_TIMEOUT` | `30` | Per-attempt socket timeout for `yt-dlp`, in seconds. |
 | `TIKTOK_RETRIES` | `3` | Number of `yt-dlp` retries on network errors. |
@@ -142,6 +143,24 @@ All configuration is via environment variables, set in `.env` (auto-picked-up by
 | `TIKTOK_UA` | Chrome 124 User-Agent | User-Agent string sent by `yt-dlp` and the HTML scraper. |
 
 > 💡 **Runtime settings:** the **proxy, language, theme, accent color, custom CSS, and auto-mark-watched behavior** are also stored in the database and editable in the **Settings** panel — they apply immediately, no rebuild needed, and survive a container restart. The DB value takes precedence over the env var (except for `DEMO_MODE`, which is env-only).
+
+---
+
+## Data Storage Modes
+
+libcut supports two data storage modes, controlled by the `DATA_MODE` environment variable:
+
+### Server mode (`DATA_MODE=local`, default)
+All user data (subscriptions, favorites, seen-state, comments) is stored on the server in a SQLite database. This is the simplest setup — data survives browser cache clears and works across devices on the same network.
+
+> ⚠️ **Warning:** In Server mode, **anyone who can access the web page can view and delete ALL data** (subscriptions, favorites, comments). This is fine for single-user or trusted-network setups. For public instances, use Client mode.
+
+### Client mode (`DATA_MODE=client`)
+All user data is stored in the browser's `localStorage`. Nothing is persisted server-side — the server only fetches TikTok data (profiles, videos, comments, streams) on demand. Each user's data stays in their own browser.
+
+Best for **public instances** shared by multiple users — no data leaks between users, and clearing browser data is the only way to lose your subscriptions.
+
+The mode is read-only in the Settings panel (shows the current mode + warning). To change it, set `DATA_MODE` in `.env` and restart the container.
 
 ---
 
@@ -276,24 +295,6 @@ The service listens on port `3040` (internal — not exposed to the host) and is
 
 ### Database
 SQLite via Prisma (`prisma/schema.prisma`), with models `Author`, `Video`, `Comment`, `Favorite`, `SearchHistory`, `Setting`. The `Setting` table holds runtime-edited values (language, theme, accent, custom CSS, proxy URL, proxy toggle, auto-mark-watched, data mode) so they survive restarts and don't require a rebuild.
-
----
-
-## Data Storage Modes
-
-libcut supports two data storage modes, switchable at runtime in **Settings → Behavior**:
-
-### Server mode (default)
-All user data (subscriptions, favorites, seen-state, comments) is stored on the server in a SQLite database. This is the simplest setup — data survives browser cache clears and works across devices on the same network.
-
-> ⚠️ **Warning:** In Server mode, **anyone who can access the web page can view and delete ALL data** (subscriptions, favorites, comments). This is fine for single-user or trusted-network setups. For public instances, use Client mode.
-
-### Client mode
-All user data is stored in the browser's `localStorage`. Nothing is persisted server-side — the server only fetches TikTok data (profiles, videos, comments, streams) on demand. Each user's data stays in their own browser.
-
-Best for **public instances** shared by multiple users — no data leaks between users, and clearing browser data is the only way to lose your subscriptions.
-
-The mode is stored both in the DB (for the UI default) and in `localStorage` (so the client remembers its mode). Switching modes does NOT migrate data — each mode has its own independent data store.
 
 ---
 

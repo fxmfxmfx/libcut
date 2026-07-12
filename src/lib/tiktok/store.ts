@@ -45,7 +45,7 @@ export const useView = create<UIState>((set, get) => ({
   accent: (typeof localStorage !== "undefined" && localStorage.getItem("libcut.accent")) || "#fe2c55",
   customCss: (typeof localStorage !== "undefined" && localStorage.getItem("libcut.css")) || "",
   autoMarkSeen: true,
-  dataMode: (typeof localStorage !== "undefined" && (localStorage.getItem("libcut.dataMode") as "local" | "client")) || "local",
+  dataMode: "local",
   setTab: (t) => set({ activeTab: t, selectedAuthor: null }),
   openAuthor: (username) => set({ selectedAuthor: username }),
   closeAuthor: () => set({ selectedAuthor: null }),
@@ -70,9 +70,6 @@ export const useView = create<UIState>((set, get) => ({
     set({ customCss: c });
   },
   setAutoMarkSeen: (b) => set({ autoMarkSeen: b }),
-  setDataMode: (m) => {
-    if (typeof localStorage !== "undefined") localStorage.setItem("libcut.dataMode", m);
-    set({ dataMode: m });
-  },
+  setDataMode: (m) => set({ dataMode: m }),
   t: (key, vars) => translate(get().lang, key, vars),
 }));
