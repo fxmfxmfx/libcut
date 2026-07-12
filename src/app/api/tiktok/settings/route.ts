@@ -30,6 +30,7 @@ export async function GET() {
       accent: settings.accent ?? "#fe2c55",
       customCss: settings.customCss ?? "",
       autoMarkSeen: settings.autoMarkSeen ?? "true",
+      dataMode: settings.dataMode ?? "local",
     },
     envProxy: tiktokConfig.defaultProxy,
     demoMode: tiktokConfig.demoMode,
@@ -47,6 +48,7 @@ export async function PATCH(req: NextRequest) {
     "accent",
     "customCss",
     "autoMarkSeen",
+    "dataMode",
   ]);
   const ops = Object.entries(body).filter(([k]) => allowed.has(k));
   for (const [key, value] of ops) {

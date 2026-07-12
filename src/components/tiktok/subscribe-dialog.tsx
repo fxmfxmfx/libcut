@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { UserPlus, Loader2 } from "lucide-react";
 import { useSubscribe } from "@/lib/tiktok/queries";
 import { useView } from "@/lib/tiktok/store";
+import { useClientData } from "@/lib/tiktok/client-data";
 import { useToast } from "@/hooks/use-toast";
 
 /**
@@ -39,10 +40,48 @@ export function SubscribeDialog({
   const { toast } = useToast();
 
   const targetUsername = username ?? inputUsername.trim().replace(/^@/, "");
+  const dataMode = useView((s) => s.dataMode);
+  const clientSubscribe = useClientData((s) => s.subscribe);
 
   async function handleSubscribe() {
     const u = targetUsername.trim().replace(/^@/, "");
     if (!u) return;
+
+    // Client mode: fetch profile via API (stateless), store in localStorage
+    if (dataMode === "client") {
+      try {
+        const r = await fetch(`/api/tiktok/authors/${encodeURIComponent(u)}`);
+        if (!r.ok) {
+          const e = await r.json().catch(() => ({}));
+          throw new Error(e.error || `HTTP ${r.status}`);
+        }
+        const d = await r.json();
+        clientSubscribe({
+          username: d.author.username,
+          displayName: d.author.displayName,
+          avatarUrl: d.author.avatarUrl,
+          description: d.author.description,
+          followerCount: d.author.followerCount,
+          subscribedAt: Date.now(),
+        });
+        toast({
+          title: t("sub.dialog.success"),
+          description: t("sub.dialog.success.desc", { user: d.author.username, n: d.videos?.length ?? 0 }),
+        });
+        setOpen(false);
+        setInputUsername("");
+        openAuthor(d.author.username);
+      } catch (e: any) {
+        toast({
+          variant: "destructive",
+          title: t("sub.dialog.fail"),
+          description: e?.message ?? t("sub.dialog.fail.desc"),
+        });
+      }
+      return;
+    }
+
+    // Local mode: use the API (persists to SQLite)
     try {
       const res = await subscribe.mutateAsync(u);
       toast({

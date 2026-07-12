@@ -18,6 +18,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { useSettings, useUpdateSettings, useStatus, useProxyCheck } from "@/lib/tiktok/queries";
 import { useView } from "@/lib/tiktok/store";
+import { useClientData } from "@/lib/tiktok/client-data";
 import { useToast } from "@/hooks/use-toast";
 import { availableLangs, type Lang } from "@/lib/tiktok/i18n";
 import { useQueryClient } from "@tanstack/react-query";
@@ -90,7 +91,11 @@ export function SettingsView() {
     if (!confirm(t("settings.clearData"))) return;
     setClearing(true);
     try {
-      await fetch("/api/tiktok/clear-data", { method: "DELETE" });
+      if (useView.getState().dataMode === "client") {
+        useClientData.getState().clearAll();
+      } else {
+        await fetch("/api/tiktok/clear-data", { method: "DELETE" });
+      }
       qc.invalidateQueries();
       toast({ description: t("settings.cleared") });
     } finally {
@@ -243,6 +248,48 @@ export function SettingsView() {
             checked={useView.getState().autoMarkSeen}
             onCheckedChange={changeAutoMark}
           />
+        </div>
+
+        <Separator />
+
+        {/* Data storage mode */}
+        <div>
+          <Label className="text-sm font-semibold">{t("settings.dataMode")}</Label>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <button
+              onClick={() => {
+                useView.getState().setDataMode("local");
+                update.mutate({ dataMode: "local" });
+              }}
+              className={`rounded-lg border p-3 text-left text-sm transition-colors ${
+                useView.getState().dataMode === "local"
+                  ? "border-primary bg-primary/10"
+                  : "border-border/60 hover:border-primary/40"
+              }`}
+            >
+              <div className="font-medium">{t("settings.dataMode.local")}</div>
+              <p className="mt-1 text-[11px] text-muted-foreground">{t("settings.dataMode.local.desc")}</p>
+            </button>
+            <button
+              onClick={() => {
+                useView.getState().setDataMode("client");
+                update.mutate({ dataMode: "client" });
+              }}
+              className={`rounded-lg border p-3 text-left text-sm transition-colors ${
+                useView.getState().dataMode === "client"
+                  ? "border-primary bg-primary/10"
+                  : "border-border/60 hover:border-primary/40"
+              }`}
+            >
+              <div className="font-medium">{t("settings.dataMode.client")}</div>
+              <p className="mt-1 text-[11px] text-muted-foreground">{t("settings.dataMode.client.desc")}</p>
+            </button>
+          </div>
+          {useView.getState().dataMode === "local" && (
+            <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-400">
+              {t("settings.dataMode.warning")}
+            </div>
+          )}
         </div>
       </Card>
 

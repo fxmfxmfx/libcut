@@ -38,6 +38,7 @@ import {
 } from "@/lib/tiktok/queries";
 import { useView } from "@/lib/tiktok/store";
 import type { Lang } from "@/lib/tiktok/i18n";
+import { useClientData } from "@/lib/tiktok/client-data";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCount, formatDuration, timeAgo, fullDate } from "@/lib/tiktok/format";
@@ -53,21 +54,30 @@ export function VideoPlayer({ videoId }: { videoId: string }) {
   const closeVideo = useView((s) => s.closeVideo);
   const openAuthor = useView((s) => s.openAuthor);
   const autoMarkSeen = useView((s) => s.autoMarkSeen);
+  const dataMode = useView((s) => s.dataMode);
   const t = useView((s) => s.t);
   const lang = useView((s) => s.lang);
   const qc = useQueryClient();
   const { toast } = useToast();
   const seenRef = useRef(false);
+  const clientMarkSeen = useClientData((s) => s.markSeen);
+  const clientAddFav = useClientData((s) => s.addFavorite);
+  const clientRemoveFav = useClientData((s) => s.removeFavorite);
+  const clientIsFav = useClientData((s) => s.isFavorited);
 
   useEffect(() => {
     if (!data || seenRef.current) return;
-    if (autoMarkSeen && !data.video.seen) {
+    if (autoMarkSeen) {
       seenRef.current = true;
-      markSeen.mutate({ id: videoId, seen: true });
+      if (dataMode === "client") {
+        clientMarkSeen(videoId);
+      } else if (!data.video.seen) {
+        markSeen.mutate({ id: videoId, seen: true });
+      }
     } else {
       seenRef.current = true;
     }
-  }, [data, videoId, markSeen, autoMarkSeen]);
+  }, [data, videoId, markSeen, autoMarkSeen, dataMode, clientMarkSeen]);
 
   function handleDownload() {
     if (!data) return;
@@ -92,7 +102,7 @@ export function VideoPlayer({ videoId }: { videoId: string }) {
 
   const video = data?.video;
   const author = data?.author;
-  const isFav = !!video?.isFavorited;
+  const isFav = dataMode === "client" ? clientIsFav(videoId) : !!video?.isFavorited;
 
   return (
     <Dialog
@@ -224,7 +234,28 @@ export function VideoPlayer({ videoId }: { videoId: string }) {
                         size="sm"
                         variant={isFav ? "default" : "outline"}
                         className="gap-1.5"
-                        onClick={() => toggleFav.mutate({ id: videoId, fav: !isFav })}
+                        onClick={() => {
+                          if (dataMode === "client") {
+                            if (isFav) {
+                              clientRemoveFav(videoId);
+                            } else if (video) {
+                              clientAddFav({
+                                videoId,
+                                tiktokId: video.tiktokId,
+                                url: video.url,
+                                title: video.title,
+                                thumbnailUrl: video.thumbnailUrl,
+                                duration: video.duration,
+                                authorUsername: author?.username ?? "",
+                                authorDisplayName: author?.displayName ?? null,
+                                authorAvatarUrl: author?.avatarUrl ?? null,
+                                favoritedAt: Date.now(),
+                              });
+                            }
+                          } else {
+                            toggleFav.mutate({ id: videoId, fav: !isFav });
+                          }
+                        }}
                         disabled={toggleFav.isPending}
                       >
                         <Heart className={cn("size-4", isFav && "fill-current")} />

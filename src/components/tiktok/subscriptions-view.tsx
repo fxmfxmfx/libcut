@@ -7,6 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { useSubscriptions, useUnsubscribe } from "@/lib/tiktok/queries";
 import { useView } from "@/lib/tiktok/store";
+import { useClientData } from "@/lib/tiktok/client-data";
 import { formatCount, timeAgo } from "@/lib/tiktok/format";
 import { EmptyState } from "./empty-state";
 import { SubscribeDialog } from "./subscribe-dialog";
@@ -14,9 +15,24 @@ import { SubscribeDialog } from "./subscribe-dialog";
 export function SubscriptionsView() {
   const subs = useSubscriptions();
   const unsubscribe = useUnsubscribe();
-  const { openAuthor, t, lang } = useView();
+  const { openAuthor, t, lang, dataMode } = useView();
+  const clientSubs = useClientData((s) => s.subscriptions);
+  const clientUnsub = useClientData((s) => s.unsubscribe);
 
-  const list = subs.data?.subscriptions ?? [];
+  // In client mode, use localStorage data
+  const list = dataMode === "client"
+    ? clientSubs.map((s) => ({
+        id: s.username,
+        username: s.username,
+        displayName: s.displayName,
+        avatarUrl: s.avatarUrl,
+        description: s.description,
+        followerCount: s.followerCount,
+        storedVideoCount: 0,
+        unseenCount: 0,
+        lastCheckedAt: s.subscribedAt ? new Date(s.subscribedAt) : null,
+      }))
+    : (subs.data?.subscriptions ?? []);
 
   return (
     <div className="space-y-5">
@@ -93,7 +109,11 @@ export function SubscriptionsView() {
                   onClick={(e) => {
                     e.stopPropagation();
                     if (confirm(`${t("subs.unsubscribe")} @${a.username}?`)) {
-                      unsubscribe.mutate(a.id);
+                      if (dataMode === "client") {
+                        clientUnsub(a.username);
+                      } else {
+                        unsubscribe.mutate(a.id);
+                      }
                     }
                   }}
                 >

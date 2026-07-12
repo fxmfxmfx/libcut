@@ -275,7 +275,25 @@ The service listens on port `3040` (internal — not exposed to the host) and is
 `src/lib/tiktok/cache.ts` downloads videos on demand into `cache/videos/` (or `TIKTOK_CACHE_DIR`). A background timer runs every **1 minute** and evicts files older than `TIKTOK_CACHE_TTL_MIN` (default **10 minutes**). DB metadata is preserved — the file is just re-downloaded next time the user plays it.
 
 ### Database
-SQLite via Prisma (`prisma/schema.prisma`), with models `Author`, `Video`, `Comment`, `Favorite`, `SearchHistory`, `Setting`. The `Setting` table holds runtime-edited values (language, theme, accent, custom CSS, proxy URL, proxy toggle, auto-mark-watched) so they survive restarts and don't require a rebuild.
+SQLite via Prisma (`prisma/schema.prisma`), with models `Author`, `Video`, `Comment`, `Favorite`, `SearchHistory`, `Setting`. The `Setting` table holds runtime-edited values (language, theme, accent, custom CSS, proxy URL, proxy toggle, auto-mark-watched, data mode) so they survive restarts and don't require a rebuild.
+
+---
+
+## Data Storage Modes
+
+libcut supports two data storage modes, switchable at runtime in **Settings → Behavior**:
+
+### Server mode (default)
+All user data (subscriptions, favorites, seen-state, comments) is stored on the server in a SQLite database. This is the simplest setup — data survives browser cache clears and works across devices on the same network.
+
+> ⚠️ **Warning:** In Server mode, **anyone who can access the web page can view and delete ALL data** (subscriptions, favorites, comments). This is fine for single-user or trusted-network setups. For public instances, use Client mode.
+
+### Client mode
+All user data is stored in the browser's `localStorage`. Nothing is persisted server-side — the server only fetches TikTok data (profiles, videos, comments, streams) on demand. Each user's data stays in their own browser.
+
+Best for **public instances** shared by multiple users — no data leaks between users, and clearing browser data is the only way to lose your subscriptions.
+
+The mode is stored both in the DB (for the UI default) and in `localStorage` (so the client remembers its mode). Switching modes does NOT migrate data — each mode has its own independent data store.
 
 ---
 

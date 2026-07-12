@@ -297,6 +297,7 @@ export interface AppSettings {
   accent: string;
   customCss: string;
   autoMarkSeen: string;
+  dataMode: string;
 }
 export function useSettings() {
   return useQuery({
