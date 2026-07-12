@@ -103,6 +103,7 @@ export interface VideoInfo {
 
 export interface CommentInfo {
   id: string;
+  tiktokCid: string | null;
   authorName: string;
   authorAvatar: string | null;
   text: string;

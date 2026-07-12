@@ -479,6 +479,9 @@ function SlidesViewer({
 
 /** Threaded comment tree — top-level comments sorted by likes, replies indented. */
 function CommentTree({ comments, lang }: { comments: CommentInfo[]; lang: Lang }) {
+  // Build tree: top-level comments (parentId=null) with their replies.
+  // Match replies to parents using tiktokCid (TikTok's comment cid), since
+  // parentId from the API is a TikTok cid, not our DB cuid.
   const topLevel = comments.filter((c) => !c.parentId);
   const repliesByParent = new Map<string, CommentInfo[]>();
   for (const c of comments) {
@@ -491,7 +494,8 @@ function CommentTree({ comments, lang }: { comments: CommentInfo[]; lang: Lang }
   return (
     <ul className="space-y-3">
       {topLevel.map((c) => {
-        const replies = (repliesByParent.get(c.id) ?? []).sort((a, b) => b.likeCount - a.likeCount);
+        // Match replies by the parent's tiktokCid.
+        const replies = (repliesByParent.get(c.tiktokCid ?? "") ?? []).sort((a, b) => b.likeCount - a.likeCount);
         return (
           <li key={c.id}>
             <CommentItem c={c} lang={lang} />

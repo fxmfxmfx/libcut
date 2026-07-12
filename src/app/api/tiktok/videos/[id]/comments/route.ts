@@ -46,12 +46,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
         const data = await r.json();
         fetched = (data.comments ?? []).map((c: any) => ({
           id: c.id,
+          tiktokCid: c.id, // TikTok cid for parent-child matching
           authorName: c.authorName,
           authorAvatar: c.authorAvatar,
           text: c.text,
           likeCount: c.likeCount,
           postedAt: c.postedAt ? new Date(c.postedAt) : null,
-          parentId: c.parentId ?? null,
+          parentId: c.parentId ?? null, // TikTok cid of parent
           replyCount: c.replyCount ?? 0,
         }));
       }
@@ -68,6 +69,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       await db.comment.createMany({
         data: fetched.map((c) => ({
           videoId: id,
+          tiktokCid: c.tiktokCid ?? null,
           authorName: c.authorName,
           authorAvatar: c.authorAvatar,
           text: c.text,
@@ -92,6 +94,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   return json({
     comments: stored.map((c) => ({
       id: c.id,
+      tiktokCid: c.tiktokCid,
       authorName: c.authorName,
       authorAvatar: proxyImage(c.authorAvatar),
       text: c.text,

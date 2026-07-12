@@ -83,12 +83,14 @@ model Comment {
   id           String    @id @default(cuid())
   videoId      String
   video        Video     @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  /// TikTok's comment cid (used for parent-child matching).
+  tiktokCid    String?
   authorName   String
   authorAvatar String?
   text         String
   likeCount    Int       @default(0)
   postedAt     DateTime?
-  /// Parent comment id (for threaded replies). Null = top-level comment.
+  /// Parent comment's TikTok cid (for threaded replies). Null = top-level.
   parentId     String?
   replyCount   Int       @default(0)
   createdAt    DateTime  @default(now())
