@@ -1,0 +1,70 @@
+"use client";
+
+import { ShieldCheck, ShieldAlert, FlaskConical } from "lucide-react";
+import { useStatus } from "@/lib/tiktok/queries";
+import { useView } from "@/lib/tiktok/store";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Badge } from "@/components/ui/badge";
+
+export function StatusBadge() {
+  const { data, isLoading } = useStatus();
+  const { t } = useView();
+
+  if (isLoading || !data) {
+    return (
+      <Badge variant="outline" className="gap-1 opacity-60">
+        <ShieldCheck className="size-3" /> …
+      </Badge>
+    );
+  }
+
+  if (data.demoMode) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge variant="outline" className="gap-1 border-amber-500/40 bg-amber-500/10 text-amber-400">
+              <FlaskConical className="size-3" /> {t("status.demo")}
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-xs">{t("status.demo.tip")}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  if (!data.proxyConfigured) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge variant="outline" className="gap-1 border-amber-500/40 bg-amber-500/10 text-amber-400">
+              <ShieldAlert className="size-3" /> {t("status.noproxy")}
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-xs">{t("status.noproxy.tip")}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge variant="outline" className="gap-1 border-emerald-500/40 bg-emerald-500/10 text-emerald-400">
+            <ShieldCheck className="size-3" /> {t("status.proxy")}
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-xs">
+          {t("status.proxy.tip", { n: String(data.cacheTtlMin) })}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}

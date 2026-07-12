@@ -1,0 +1,43 @@
+# libcut — docker compose deployment.
+#
+# Quick start:
+#   1. Edit .env  →  set DEMO_MODE=false and TIKTOK_PROXY=socks5://user:pass@host:port
+#   2. docker compose up -d --build
+#   3. Open http://localhost:3000
+#
+# Variables below use ${VAR:-default} substitution. Docker Compose reads
+# `.env` automatically for substitution, so anything you put in `.env`
+# overrides the defaults shown here. The `env_file: .env` entry also passes
+# every var from `.env` straight into the container (vars in `environment:`
+# below take precedence over those from env_file).
+
+services:
+  libcut:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: libcut:latest
+    container_name: libcut
+    ports:
+      - "3000:3000"
+    volumes:
+      - libcut-db:/app/db
+      - libcut-cache:/app/cache/videos
+    env_file:
+      - .env
+    environment:
+      # --- Overridable via .env ---
+      DEMO_MODE: ${DEMO_MODE:-false}
+      TIKTOK_PROXY: ${TIKTOK_PROXY:-}
+      TIKTOK_CACHE_TTL_MIN: ${TIKTOK_CACHE_TTL_MIN:-10}
+      TIKTOK_SOCKET_TIMEOUT: ${TIKTOK_SOCKET_TIMEOUT:-30}
+      TIKTOK_RETRIES: ${TIKTOK_RETRIES:-3}
+      # --- Hardcoded for the container layout (do not override via .env) ---
+      DATABASE_URL: file:/app/db/custom.db
+      TIKTOK_CACHE_DIR: /app/cache/videos
+      NODE_ENV: production
+    restart: unless-stopped
+
+volumes:
+  libcut-db:
+  libcut-cache:

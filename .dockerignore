@@ -1,0 +1,40 @@
+# --- Required excludes (per deployment spec) ---
+node_modules
+.next
+dev.log
+server.log
+db/*.db
+cache
+.git
+download
+
+# --- Sensible extras ---
+# SQLite write-ahead-log / journal files from local dev.
+db/*.db-journal
+db/*.db-wal
+db/*.db-shm
+
+# Local secrets — must not be baked into the image.
+.env
+.env.*
+
+# Build metadata / docs don't need to be in the image build context.
+Dockerfile
+docker-compose.yml
+.dockerignore
+DOCKER.md
+worklog.md
+
+# Misc local cruft.
+*.log
+.DS_Store
+
+# Non-app directories (not needed in the Docker image).
+examples
+skills
+README.md
+README.ru.md
+README.en.md
+LICENSE
+preview*.png
+preview-*.png

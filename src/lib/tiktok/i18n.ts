@@ -1,0 +1,341 @@
+/**
+ * Lightweight i18n (EN / RU). Default language is English.
+ * Strings are looked up via `t(key)`; the active language lives in a Zustand
+ * store (synced to the DB setting + localStorage).
+ */
+
+export type Lang = "en" | "ru";
+
+type Dict = Record<string, string>;
+
+const en: Dict = {
+  // Nav
+  "nav.feed": "Feed",
+  "nav.subscriptions": "Subscriptions",
+  "nav.favorites": "Favorites",
+  "nav.search": "Search",
+  "nav.settings": "Settings",
+
+  // Search
+  "search.placeholder": "Search authors and videos…",
+  "search.authors": "Authors",
+  "search.videos": "Videos",
+  "search.all": "All",
+  "search.start": "Start searching",
+  "search.start.desc": "Type an @username or keywords in the search bar above. Results come from your library and live from TikTok.",
+  "search.notFound.authors": "No authors found.",
+  "search.notFound.videos": "No videos found.",
+  "search.inLibrary": "In library",
+  "search.onTikTok": "TikTok",
+
+  // Feed
+  "feed.title": "Feed",
+  "feed.desc": "New videos from your subscriptions you haven't seen yet",
+  "feed.check": "Check for new",
+  "feed.checking": "Checking your subscriptions for new videos…",
+  "feed.found": "Found {n} new videos",
+  "feed.empty.title": "No new videos",
+  "feed.empty.desc": "You've watched everything available. Click \"Check for new\" to refresh the feed.",
+  "feed.empty.nosub.title": "Feed is empty",
+  "feed.empty.nosub.desc": "Subscribe to TikTok creators so their new videos show up here. The feed only shows videos you haven't watched.",
+  "feed.empty.nosub.cta": "Find creators",
+
+  // Subscriptions
+  "subs.title": "Subscriptions",
+  "subs.desc": "Manage the creators you follow",
+  "subs.subscribe": "Subscribe",
+  "subs.unsubscribe": "Unsubscribe",
+  "subs.empty.title": "No subscriptions",
+  "subs.empty.desc": "Add TikTok creators by @username — their recent videos are saved locally and new ones appear in the feed.",
+  "subs.unseen": "new",
+  "subs.unwatched": "unwatched",
+  "subs.stored": "videos",
+
+  // Subscribe dialog
+  "sub.dialog.title": "Subscribe to a creator",
+  "sub.dialog.desc": "Enter a TikTok @username. We'll fetch the profile and recent videos via yt-dlp (through your SOCKS5 proxy) and save them locally.",
+  "sub.dialog.username": "Username",
+  "sub.dialog.placeholder": "@username",
+  "sub.dialog.cancel": "Cancel",
+  "sub.dialog.ok": "Subscribe",
+  "sub.dialog.success": "Subscribed",
+  "sub.dialog.success.desc": "@{user} · {n} videos added",
+  "sub.dialog.fail": "Could not subscribe",
+  "sub.dialog.fail.desc": "Check the username and your proxy",
+
+  // Favorites
+  "fav.title": "Favorites",
+  "fav.desc": "Videos you've saved",
+  "fav.empty.title": "No favorites yet",
+  "fav.empty.desc": "Open any video and tap \"Favorite\" to save it here. Favorites are stored in your local database.",
+  "fav.empty.cta": "Go to feed",
+
+  // Author profile
+  "author.followers": "followers",
+  "author.following": "following",
+  "author.likes": "likes",
+  "author.videos": "videos",
+  "author.updated": "updated {ago}",
+  "author.check": "Check for new",
+  "author.loadOlder": "Load older videos",
+  "author.markAllSeen": "Mark all as watched",
+  "author.markAllSeen.done": "Marked {n} videos as watched",
+  "author.openOriginal": "Open on TikTok",
+  "author.back": "Back",
+  "author.notFound.title": "Creator not found",
+  "author.notFound.desc": "This creator isn't in your library. Subscribe to load their profile.",
+  "author.notFound.cta": "Load profile",
+  "author.notSubscribed": "not subscribed",
+  "author.subscribed": "Following",
+
+  // External link warning
+  "ext.warn.title": "Leaving libcut",
+  "ext.warn.desc": "This will open the real TikTok website, which has tracking and ads. Continue?",
+  "ext.warn.continue": "Continue to TikTok",
+  "ext.warn.cancel": "Stay here",
+
+  // Video card
+  "video.watched": "Watched",
+  "video.new": "New",
+  "video.untitled": "Untitled",
+
+  // Player
+  "player.original": "Original",
+  "player.favorite": "Favorite",
+  "player.favorited": "Favorited",
+  "player.download": "Download",
+  "player.download.start": "Download started",
+  "player.download.desc": "The video is downloading to your computer.",
+  "player.markWatched": "Mark watched",
+  "player.markNew": "Mark as new",
+  "player.comments": "Comments",
+  "player.comments.refresh": "Refresh",
+  "player.comments.empty": "No comments yet",
+  "player.comments.fail": "Couldn't load comments: {err}",
+  "player.close": "Close",
+  "player.volume": "Volume",
+  "player.slides": "Slide {n} of {total}",
+  "player.next": "Next",
+  "player.prev": "Previous",
+  "player.failed": "Couldn't load video",
+
+  // Settings
+  "settings.title": "Settings",
+  "settings.language": "Language",
+  "settings.theme": "Theme",
+  "settings.accent": "Accent color",
+  "settings.customCss": "Custom CSS",
+  "settings.customCss.placeholder": "/* Add your own CSS here */\n:root { /* … */ }",
+  "settings.proxy": "Proxy",
+  "settings.proxy.enabled": "Use proxy",
+  "settings.proxy.url": "SOCKS5 proxy URL",
+  "settings.proxy.url.placeholder": "socks5://user:pass@host:1080",
+  "settings.proxy.desc": "All TikTok access goes through this proxy (via yt-dlp). Enabled by default.",
+  "settings.proxy.env": "From env: {url}",
+  "settings.proxy.none": "No proxy configured",
+  "settings.behavior": "Behavior",
+  "settings.autoMarkSeen": "Auto-mark videos as watched when opened",
+  "settings.save": "Save",
+  "settings.saved": "Settings saved",
+  "settings.reset": "Reset to defaults",
+  "settings.cache": "Cache",
+  "settings.cache.ttl": "Video cache lifetime (minutes)",
+  "settings.danger": "Danger zone",
+  "settings.clearData": "Clear all data (subscriptions, favorites, comments)",
+  "settings.cleared": "All data cleared",
+
+  // Themes
+  "theme.default": "Default (Rose)",
+  "theme.gruvbox": "Gruvbox",
+  "theme.catppuccin": "Catppuccin Mocha",
+  "theme.nord": "Nord",
+  "theme.dracula": "Dracula",
+  "theme.light": "Light",
+
+  // Status
+  "status.demo": "Demo mode",
+  "status.demo.tip": "DEMO_MODE is on — sample data is shown, real TikTok is not contacted. On your server set DEMO_MODE=false and configure a SOCKS5 proxy (TIKTOK_PROXY).",
+  "status.noproxy": "No proxy",
+  "status.noproxy.tip": "TIKTOK_PROXY is not set. Requests go direct — TikTok will likely block them. Set a SOCKS5 proxy.",
+  "status.proxy": "Proxy active",
+  "status.proxy.tip": "All TikTok access goes through your SOCKS5 proxy. Video cache is cleared every {n} min.",
+
+  // Misc
+  "time.justNow": "just now",
+  "time.min": "min ago",
+  "time.h": "h ago",
+  "time.d": "d ago",
+  "time.wk": "wk ago",
+  "time.mo": "mo ago",
+  "time.y": "y ago",
+  "common.cancel": "Cancel",
+  "common.confirm": "Confirm",
+};
+
+const ru: Dict = {
+  "nav.feed": "Лента",
+  "nav.subscriptions": "Подписки",
+  "nav.favorites": "Избранное",
+  "nav.search": "Поиск",
+  "nav.settings": "Настройки",
+
+  "search.placeholder": "Поиск авторов и видео…",
+  "search.authors": "Авторы",
+  "search.videos": "Видео",
+  "search.all": "Всё",
+  "search.start": "Начните искать",
+  "search.start.desc": "Введите @username или ключевые слова в строку поиска сверху. Результаты ищутся и в вашей библиотеке, и напрямую в TikTok.",
+  "search.notFound.authors": "Авторы не найдены.",
+  "search.notFound.videos": "Видео не найдены.",
+  "search.inLibrary": "В библиотеке",
+  "search.onTikTok": "TikTok",
+
+  "feed.title": "Лента",
+  "feed.desc": "Новые видео от ваших подписок, которые вы ещё не видели",
+  "feed.check": "Проверить новые",
+  "feed.checking": "Проверяем новые видео у ваших подписок…",
+  "feed.found": "Найдено {n} новых видео",
+  "feed.empty.title": "Нет новых видео",
+  "feed.empty.desc": "Вы просмотрели всё доступное. Нажмите «Проверить новые», чтобы обновить ленту.",
+  "feed.empty.nosub.title": "Лента пуста",
+  "feed.empty.nosub.desc": "Подпишитесь на авторов TikTok, чтобы их новые видео появлялись здесь. Лента показывает только непросмотренные видео.",
+  "feed.empty.nosub.cta": "Найти авторов",
+
+  "subs.title": "Подписки",
+  "subs.desc": "Управляйте авторами, на которых вы подписаны",
+  "subs.subscribe": "Подписаться",
+  "subs.unsubscribe": "Отписаться",
+  "subs.empty.title": "Нет подписок",
+  "subs.empty.desc": "Добавьте авторов TikTok по @username — их последние видео сохранятся локально, и новые будут появляться в ленте.",
+  "subs.unseen": "нов.",
+  "subs.unwatched": "непросм.",
+  "subs.stored": "видео",
+
+  "sub.dialog.title": "Подписаться на автора",
+  "sub.dialog.desc": "Введите @username из TikTok. Мы загрузим профиль и последние видео через yt-dlp (через SOCKS5-прокси) и сохраним их локально.",
+  "sub.dialog.username": "Имя пользователя",
+  "sub.dialog.placeholder": "@username",
+  "sub.dialog.cancel": "Отмена",
+  "sub.dialog.ok": "Подписаться",
+  "sub.dialog.success": "Подписка оформлена",
+  "sub.dialog.success.desc": "@{user} · {n} видео добавлено",
+  "sub.dialog.fail": "Не удалось подписаться",
+  "sub.dialog.fail.desc": "Проверьте имя пользователя и прокси",
+
+  "fav.title": "Избранное",
+  "fav.desc": "Видео, которые вы сохранили",
+  "fav.empty.title": "В избранном пусто",
+  "fav.empty.desc": "Откройте любое видео и нажмите «В избранное», чтобы сохранить его здесь. Избранное хранится в вашей локальной базе.",
+  "fav.empty.cta": "Перейти в ленту",
+
+  "author.followers": "подписчиков",
+  "author.following": "подписок",
+  "author.likes": "лайков",
+  "author.videos": "видео",
+  "author.updated": "обновлено {ago}",
+  "author.check": "Проверить новые",
+  "author.loadOlder": "Загрузить старые видео",
+  "author.markAllSeen": "Отметить все просмотренными",
+  "author.markAllSeen.done": "Отмечено {n} видео как просмотренные",
+  "author.openOriginal": "Открыть в TikTok",
+  "author.back": "Назад",
+  "author.notFound.title": "Автор не найден",
+  "author.notFound.desc": "Этого автора нет в вашей библиотеке. Подпишитесь, чтобы загрузить его профиль.",
+  "author.notFound.cta": "Загрузить профиль",
+  "author.notSubscribed": "не подписан",
+  "author.subscribed": "Вы подписаны",
+
+  "ext.warn.title": "Выход из libcut",
+  "ext.warn.desc": "Это откроет настоящий сайт TikTok с трекингом и рекламой. Продолжить?",
+  "ext.warn.continue": "Перейти в TikTok",
+  "ext.warn.cancel": "Остаться здесь",
+
+  "video.watched": "Просмотрено",
+  "video.new": "Новое",
+  "video.untitled": "Без названия",
+
+  "player.original": "Оригинал",
+  "player.favorite": "В избранное",
+  "player.favorited": "В избранном",
+  "player.download": "Скачать",
+  "player.download.start": "Загрузка началась",
+  "player.download.desc": "Видео скачивается на ваш компьютер.",
+  "player.markWatched": "Отметить просмотренным",
+  "player.markNew": "Отметить новым",
+  "player.comments": "Комментарии",
+  "player.comments.refresh": "Обновить",
+  "player.comments.empty": "Пока нет комментариев",
+  "player.comments.fail": "Не удалось загрузить комментарии: {err}",
+  "player.close": "Закрыть",
+  "player.volume": "Громкость",
+  "player.slides": "Слайд {n} из {total}",
+  "player.next": "Далее",
+  "player.prev": "Назад",
+  "player.failed": "Не удалось загрузить видео",
+
+  "settings.title": "Настройки",
+  "settings.language": "Язык",
+  "settings.theme": "Тема",
+  "settings.accent": "Акцентный цвет",
+  "settings.customCss": "Кастомный CSS",
+  "settings.customCss.placeholder": "/* Добавьте свой CSS здесь */\n:root { /* … */ }",
+  "settings.proxy": "Прокси",
+  "settings.proxy.enabled": "Использовать прокси",
+  "settings.proxy.url": "URL SOCKS5-прокси",
+  "settings.proxy.url.placeholder": "socks5://user:pass@host:1080",
+  "settings.proxy.desc": "Весь доступ к TikTok идёт через этот прокси (через yt-dlp). Включён по умолчанию.",
+  "settings.proxy.env": "Из env: {url}",
+  "settings.proxy.none": "Прокси не настроен",
+  "settings.behavior": "Поведение",
+  "settings.autoMarkSeen": "Автоматически отмечать видео просмотренными при открытии",
+  "settings.save": "Сохранить",
+  "settings.saved": "Настройки сохранены",
+  "settings.reset": "Сбросить по умолчанию",
+  "settings.cache": "Кэш",
+  "settings.cache.ttl": "Время жизни кэша видео (минуты)",
+  "settings.danger": "Опасная зона",
+  "settings.clearData": "Очистить все данные (подписки, избранное, комментарии)",
+  "settings.cleared": "Все данные очищены",
+
+  "theme.default": "По умолчанию (Rose)",
+  "theme.gruvbox": "Gruvbox",
+  "theme.catppuccin": "Catppuccin Mocha",
+  "theme.nord": "Nord",
+  "theme.dracula": "Dracula",
+  "theme.light": "Светлая",
+
+  "status.demo": "Демо-режим",
+  "status.demo.tip": "Включён DEMO_MODE — показываются примеры данных, реальный TikTok не запрашивается. На сервере выставите DEMO_MODE=false и укажите SOCKS5-прокси (TIKTOK_PROXY).",
+  "status.noproxy": "Без прокси",
+  "status.noproxy.tip": "TIKTOK_PROXY не задан. Запросы идут напрямую — TikTok, скорее всего, заблокирует их. Укажите SOCKS5-прокси.",
+  "status.proxy": "Прокси активен",
+  "status.proxy.tip": "Весь доступ к TikTok идёт через ваш SOCKS5-прокси. Кэш видео очищается каждые {n} мин.",
+
+  "time.justNow": "только что",
+  "time.min": "мин назад",
+  "time.h": "ч назад",
+  "time.d": "дн назад",
+  "time.wk": "нед назад",
+  "time.mo": "мес назад",
+  "time.y": "г назад",
+  "common.cancel": "Отмена",
+  "common.confirm": "Подтвердить",
+};
+
+const dicts: Record<Lang, Dict> = { en, ru };
+
+/** Translate a key with optional {placeholder} interpolation. */
+export function translate(lang: Lang, key: string, vars?: Record<string, string | number>): string {
+  let s = dicts[lang]?.[key] ?? dicts.en[key] ?? key;
+  if (vars) {
+    for (const [k, v] of Object.entries(vars)) {
+      s = s.replace(new RegExp(`\\{${k}\\}`, "g"), String(v));
+    }
+  }
+  return s;
+}
+
+export const availableLangs: { value: Lang; label: string }[] = [
+  { value: "en", label: "English" },
+  { value: "ru", label: "Русский" },
+];

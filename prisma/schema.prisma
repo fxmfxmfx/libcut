@@ -1,0 +1,122 @@
+// Private TikTok Parser — Prisma schema
+// Self-hosted, tracking-free TikTok viewer (redlib for TikTok)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// A TikTok creator the user has subscribed to.
+model Author {
+  id             String    @id @default(cuid())
+  /// TikTok handle without the leading "@"
+  username       String    @unique
+  displayName    String?
+  avatarUrl      String?
+  description    String?
+  followerCount  Int       @default(0)
+  followingCount Int       @default(0)
+  heartCount     Int       @default(0)
+  videoCount     Int       @default(0)
+  /// Whether the user is currently subscribed (soft-delete friendly)
+  subscribed     Boolean   @default(true)
+  lastCheckedAt  DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  videos Video[]
+
+  @@index([subscribed])
+}
+
+/// A TikTok video discovered from a subscribed author.
+model Video {
+  id            String    @id @default(cuid())
+  /// TikTok numeric video id
+  tiktokId      String
+  authorId      String
+  author        Author    @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  /// Full tiktok.com URL
+  url           String
+  title         String?
+  description   String?
+  thumbnailUrl  String?
+  /// Duration in seconds (0 for photo carousels)
+  duration      Int       @default(0)
+  width         Int       @default(0)
+  height        Int       @default(0)
+  viewCount     Int       @default(0)
+  likeCount     Int       @default(0)
+  commentCount  Int       @default(0)
+  shareCount    Int       @default(0)
+  publishedAt   DateTime?
+  /// When we first discovered this video
+  discoveredAt  DateTime  @default(now())
+  /// Whether the user has watched it (drives the "new unseen" feed)
+  seen          Boolean   @default(false)
+  seenAt        DateTime?
+  /// Path to the cached video file (temp cache, auto-deleted every 10 min)
+  cachedPath    String?
+  cachedAt      DateTime?
+  /// Direct streamable URL (when available from yt-dlp, used as fallback to cache)
+  streamUrl     String?
+  /// Photo carousel / image post (swipeable slides) instead of a video.
+  isGallery     Boolean   @default(false)
+  /// JSON-encoded array of image URLs for a gallery post.
+  images        String?
+
+  comments  Comment[]
+  favorites Favorite[]
+
+  @@unique([authorId, tiktokId])
+  @@index([authorId])
+  @@index([discoveredAt])
+  @@index([seen])
+}
+
+/// A comment on a TikTok video.
+model Comment {
+  id           String    @id @default(cuid())
+  videoId      String
+  video        Video     @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  authorName   String
+  authorAvatar String?
+  text         String
+  likeCount    Int       @default(0)
+  postedAt     DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([videoId])
+}
+
+/// A video the user has saved to favorites.
+model Favorite {
+  id        String   @id @default(cuid())
+  videoId   String
+  video     Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([videoId])
+}
+
+/// Recent search queries (for search history / suggestions).
+model SearchHistory {
+  id        String   @id @default(cuid())
+  query     String
+  kind      String   @default("all") // "author" | "video" | "all"
+  createdAt DateTime @default(now())
+
+  @@index([query])
+}
+
+/// App settings (key-value). Stored in DB so they survive restarts and can be
+/// edited at runtime via the settings panel (language, theme, accent, proxy, ...).
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
