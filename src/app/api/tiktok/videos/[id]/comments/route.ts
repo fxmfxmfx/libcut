@@ -71,11 +71,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
           text: c.text,
           likeCount: c.likeCount,
           postedAt: c.postedAt,
+          parentId: c.parentId ?? null,
+          replyCount: c.replyCount ?? 0,
         })),
       });
       stored = await db.comment.findMany({
         where: { videoId: id },
-        orderBy: { postedAt: "desc" },
+        orderBy: [{ parentId: "asc" }, { likeCount: "desc" }],
       });
     } else if (v.commentCount > 0) {
       fetchError = "Comments could not be loaded (TikTok blocks the comment API for some regions)";
@@ -93,6 +95,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       text: c.text,
       likeCount: c.likeCount,
       postedAt: c.postedAt,
+      parentId: c.parentId,
+      replyCount: c.replyCount,
     })),
     commentCount: v.commentCount,
   });

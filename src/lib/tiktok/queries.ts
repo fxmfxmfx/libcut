@@ -108,6 +108,8 @@ export interface CommentInfo {
   text: string;
   likeCount: number;
   postedAt: string | null;
+  parentId: string | null;
+  replyCount: number;
 }
 
 // ---- Queries ----

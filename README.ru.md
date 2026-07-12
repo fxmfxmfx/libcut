@@ -7,6 +7,7 @@
 libcut — это идея [redlib](https://github.com/redlib-org/redlib) / [libreddit](https://github.com/libreddit/libreddit), но для TikTok. Вы запускаете приложение на своём сервере, подписываетесь на авторов по `@username` и получаете чистую ленту новых непросмотренных видео — с комментариями, избранным, скачиванием, фото-каруселями и полными профилями авторов. Весь сетевой доступ к TikTok идёт через SOCKS5-прокси и [`yt-dlp`](https://github.com/yt-dlp/yt-dlp); никакие сторонние скрипты и пиксели TikTok никогда не выполняются в вашем браузере.
 
 > ⚠️ Проект предназначен для **личного** использования. Уважайте авторские права и правила TikTok.
+> ⚠️ Полностью написан через vibe-coding с помощью GLM 5.2 на chat.z.ai
 
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -16,15 +17,10 @@ libcut — это идея [redlib](https://github.com/redlib-org/redlib) / [lib
 
 ## Скриншоты
 
-| Лента непросмотренных видео | Тема Gruvbox |
-|---|---|
-| ![Feed](preview3-feed.png) | ![Gruvbox](preview3-gruvbox.png) |
-
-| Видеоплеер | Профиль автора |
-|---|---|
-| ![Player](preview3-player.png) | ![Profile](preview3-profile.png) |
-
-> Все скриншоты лежат в корне репозитория. Со временем могут добавляться новые.
+<img width="1629" height="901" alt="image" src="https://github.com/user-attachments/assets/27c30a81-a9fd-4ad8-88e6-63c71661fbdf" />
+<img width="1611" height="876" alt="image" src="https://github.com/user-attachments/assets/f0ca2708-765a-41d9-9974-4007e53c9e4d" />
+<img width="1611" height="880" alt="image" src="https://github.com/user-attachments/assets/9ab0fee6-8f1f-4172-941f-e02d9b4a7375" />
+<img width="1617" height="880" alt="image" src="https://github.com/user-attachments/assets/3d691452-40d3-45fa-9661-b29c7fc8ba48" />
 
 ---
 
@@ -87,7 +83,7 @@ libcut — это идея [redlib](https://github.com/redlib-org/redlib) / [lib
 1. **Клонируйте репозиторий:**
 
    ```bash
-   git clone <your-repo-url> libcut
+   git clone https://github.com/fxmfxmfx/libcut/
    cd libcut
    ```
 
@@ -487,3 +483,4 @@ RUN pip3 install --no-cache-dir --break-system-packages yt-dlp==<version> curl_c
 - **[puppeteer](https://pptr.dev/)** + **puppeteer-extra-plugin-stealth** — headless-автоматизация Chromium для комментариев.
 
 Вдохновлено [redlib](https://github.com/redlib-org/redlib) и [libreddit](https://github.com/libreddit/libreddit) — та же приверженность приватности и самохостингу, применённая к TikTok.
+Vibe-coded by GLM 5.2 which is open-weight model developed by z.ai

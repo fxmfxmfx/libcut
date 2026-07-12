@@ -34,8 +34,10 @@ import {
   useComments,
   useToggleFavorite,
   useMarkSeen,
+  type CommentInfo,
 } from "@/lib/tiktok/queries";
 import { useView } from "@/lib/tiktok/store";
+import type { Lang } from "@/lib/tiktok/i18n";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCount, formatDuration, timeAgo, fullDate } from "@/lib/tiktok/format";
@@ -186,9 +188,9 @@ export function VideoPlayer({ videoId }: { videoId: string }) {
 
                 {/* Scrollable details + comments (desktop) / inline (mobile) */}
                 <div className="flex min-h-0 flex-1 flex-col lg:overflow-hidden">
-                  <div className="space-y-3 p-4 lg:shrink-0">
+                  <div className="space-y-3 p-4">
                     {video.title && (
-                      <p className="whitespace-pre-line text-sm leading-relaxed text-foreground">
+                      <p className="whitespace-pre-line break-words text-sm leading-relaxed text-foreground">
                         {video.title}
                       </p>
                     )}
@@ -297,34 +299,7 @@ export function VideoPlayer({ videoId }: { videoId: string }) {
                           {t("player.comments.empty")}
                         </div>
                       ) : (
-                        <ul className="space-y-3">
-                          {comments.data?.comments.map((c) => (
-                            <li key={c.id} className="flex gap-3">
-                              <Avatar className="size-8 border border-border/40">
-                                <AvatarImage src={c.authorAvatar ?? undefined} />
-                                <AvatarFallback className="text-[10px]">
-                                  {c.authorName.slice(0, 2).toUpperCase()}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2">
-                                  <span className="truncate text-xs font-semibold">{c.authorName}</span>
-                                  {c.postedAt && (
-                                    <span className="text-[10px] text-muted-foreground">
-                                      {timeAgo(c.postedAt, lang)}
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="break-words text-sm leading-snug text-foreground/90">
-                                  {c.text}
-                                </p>
-                                <div className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
-                                  <Heart className="size-3" /> {formatCount(c.likeCount)}
-                                </div>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
+                        <CommentTree comments={comments.data?.comments ?? []} lang={lang} />
                       )}
                     </div>
                   </div>
@@ -478,6 +453,73 @@ function SlidesViewer({
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/** Threaded comment tree — top-level comments sorted by likes, replies indented. */
+function CommentTree({ comments, lang }: { comments: CommentInfo[]; lang: Lang }) {
+  const topLevel = comments.filter((c) => !c.parentId);
+  const repliesByParent = new Map<string, CommentInfo[]>();
+  for (const c of comments) {
+    if (c.parentId) {
+      const arr = repliesByParent.get(c.parentId) ?? [];
+      arr.push(c);
+      repliesByParent.set(c.parentId, arr);
+    }
+  }
+  return (
+    <ul className="space-y-3">
+      {topLevel.map((c) => {
+        const replies = (repliesByParent.get(c.id) ?? []).sort((a, b) => b.likeCount - a.likeCount);
+        return (
+          <li key={c.id}>
+            <CommentItem c={c} lang={lang} />
+            {replies.length > 0 && (
+              <ul className="mt-2 space-y-2 border-l-2 border-border/40 pl-4">
+                {replies.map((r) => (
+                  <li key={r.id}>
+                    <CommentItem c={r} lang={lang} isReply />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** Single comment item. */
+function CommentItem({ c, lang, isReply }: { c: CommentInfo; lang: Lang; isReply?: boolean }) {
+  return (
+    <div className="flex gap-3">
+      <Avatar className={cn("border border-border/40", isReply ? "size-6" : "size-8")}>
+        <AvatarImage src={c.authorAvatar ?? undefined} />
+        <AvatarFallback className="text-[10px]">
+          {c.authorName.slice(0, 2).toUpperCase()}
+        </AvatarFallback>
+      </Avatar>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="truncate text-xs font-semibold">{c.authorName}</span>
+          {c.postedAt && (
+            <span className="text-[10px] text-muted-foreground">
+              {timeAgo(c.postedAt, lang)}
+            </span>
+          )}
+        </div>
+        <p className="break-words text-sm leading-snug text-foreground/90">
+          {c.text}
+        </p>
+        <div className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+          <Heart className="size-3" /> {formatCount(c.likeCount)}
+          {!isReply && c.replyCount > 0 && (
+            <span className="ml-2">↳ {c.replyCount}</span>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

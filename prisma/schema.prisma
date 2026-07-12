@@ -88,6 +88,9 @@ model Comment {
   text         String
   likeCount    Int       @default(0)
   postedAt     DateTime?
+  /// Parent comment id (for threaded replies). Null = top-level comment.
+  parentId     String?
+  replyCount   Int       @default(0)
   createdAt    DateTime  @default(now())
 
   @@index([videoId])

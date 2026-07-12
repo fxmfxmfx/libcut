@@ -45,19 +45,25 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       // fall back to /stream
     }
   } else if (!v.streamUrl) {
-    // Real mode: fetch meta once and cache streamUrl + author info in DB.
+    // Real mode: fetch meta once and cache streamUrl + author info + stats in DB.
     try {
       const meta = await tiktokProvider.getVideoMeta(v.url);
+      // Update video stats + gallery info in one query.
+      const updateData: any = {};
       if (meta.isGallery) {
         isGallery = true;
         images = meta.images ?? images;
-        await db.video.update({
-          where: { id: v.id },
-          data: {
-            isGallery: true,
-            images: meta.images ? JSON.stringify(meta.images) : null,
-          },
-        });
+        updateData.isGallery = true;
+        updateData.images = meta.images ? JSON.stringify(meta.images) : null;
+      }
+      if (meta.viewCount > 0) updateData.viewCount = meta.viewCount;
+      if (meta.likeCount > 0) updateData.likeCount = meta.likeCount;
+      if (meta.commentCount > 0) updateData.commentCount = meta.commentCount;
+      if (meta.shareCount > 0) updateData.shareCount = meta.shareCount;
+      if (meta.thumbnailUrl) updateData.thumbnailUrl = meta.thumbnailUrl;
+      if (meta.duration > 0) updateData.duration = meta.duration;
+      if (Object.keys(updateData).length > 0) {
+        await db.video.update({ where: { id: v.id }, data: updateData });
       }
       if (meta.authorDisplayName && meta.authorDisplayName !== v.author.displayName) {
         authorDisplayName = meta.authorDisplayName;

@@ -48,9 +48,10 @@ export function SearchView() {
           title={t("search.start")}
           description={t("search.start.desc")}
         />
-      ) : search.isLoading ? (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="size-4 animate-spin text-primary" /> …
+      ) : search.isLoading || search.isFetching ? (
+        <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground">
+          <Loader2 className="size-8 animate-spin text-primary" />
+          <p className="text-sm">{t("search.loading")}</p>
         </div>
       ) : (
         <>
