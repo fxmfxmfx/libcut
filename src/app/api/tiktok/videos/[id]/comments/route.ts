@@ -51,6 +51,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
           text: c.text,
           likeCount: c.likeCount,
           postedAt: c.postedAt ? new Date(c.postedAt) : null,
+          parentId: c.parentId ?? null,
+          replyCount: c.replyCount ?? 0,
         }));
       }
     } catch (e: any) {

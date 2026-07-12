@@ -46,7 +46,8 @@ import { ExternalLinkButton } from "./external-link-button";
 
 export function VideoPlayer({ videoId }: { videoId: string }) {
   const { data, isLoading, isError, error } = useVideo(videoId);
-  const comments = useComments(videoId);
+  const [commentsEnabled, setCommentsEnabled] = useState(false);
+  const comments = useComments(videoId, commentsEnabled);
   const toggleFav = useToggleFavorite();
   const markSeen = useMarkSeen();
   const closeVideo = useView((s) => s.closeVideo);
@@ -278,8 +279,27 @@ export function VideoPlayer({ videoId }: { videoId: string }) {
                     </div>
 
                     <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-20 lg:pb-4">
-                      {comments.isLoading ? (
+                      {!commentsEnabled ? (
+                        <div className="grid place-items-center py-8 text-center">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-2"
+                            onClick={() => setCommentsEnabled(true)}
+                          >
+                            <MessageCircle className="size-4" />
+                            {t("player.comments.load")}
+                          </Button>
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            {t("player.comments.slow")}
+                          </p>
+                        </div>
+                      ) : comments.isLoading || comments.isFetching ? (
                         <div className="space-y-3">
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Loader2 className="size-4 animate-spin text-primary" />
+                            {t("player.comments.loading")}
+                          </div>
                           {Array.from({ length: 4 }).map((_, i) => (
                             <div key={i} className="flex gap-3">
                               <Skeleton className="size-8 rounded-full" />

@@ -160,13 +160,13 @@ export function useVideo(id: string | null) {
   });
 }
 
-export function useComments(id: string | null) {
+export function useComments(id: string | null, enabled = true) {
   return useQuery({
     queryKey: ["comments", id],
     queryFn: () => api.get<{ comments: CommentInfo[]; commentCount: number; error?: string }>(
       `/api/tiktok/videos/${id}/comments`,
     ),
-    enabled: !!id,
+    enabled: !!id && enabled,
   });
 }
 

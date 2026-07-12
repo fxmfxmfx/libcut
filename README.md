@@ -263,9 +263,13 @@ TikTok's comment API requires `a_bogus` request signing, which is non-trivial to
 1. Load the video page.
 2. **Accept TikTok's GDPR consent banner** (EEA proxy regions show a consent wall that blocks comments until accepted — this was the long-standing blocker).
 3. **Click the comment icon** — TikTok fires the signed comment API request from the real browser.
-4. **Intercept the response** — `/api/comment/list` payloads are parsed into `{ authorName, authorAvatar, text, likeCount, postedAt }`.
+4. **Intercept the response** — `/api/comment/list` payloads are parsed into `{ authorName, authorAvatar, text, likeCount, postedAt, parentId, replyCount }`.
 
-The service listens on port `3040` (internal — not exposed to the host) and is called by the Next.js API route at `/api/tiktok/videos/[id]/comments`. First-load latency is ~20–40 seconds (Chromium spin-up + page load + consent + click + scroll); subsequent loads are faster.
+The service listens on port `3040` (internal — not exposed to the host) and is called by the Next.js API route at `/api/tiktok/videos/[id]/comments`.
+
+> ⚠️ **Comments are slow (~30–40 seconds per load).** This is fundamental — the headless browser must load the full TikTok SPA, accept GDPR consent, click the comment icon, and wait for the signed API response. Comments are **not loaded automatically**; you must click the "Load comments" button in the player. Replies (threaded) are also loaded by clicking "View N replies" buttons. Comments are sorted by popularity (likes descending).
+
+> ⚠️ **If comments fail to load**, your proxy may not be working. libcut doesn't show a prominent error — if you see empty profiles or "Comments could not be loaded", check your proxy in Settings or `TIKTOK_PROXY` env var.
 
 ### Temp cache
 `src/lib/tiktok/cache.ts` downloads videos on demand into `cache/videos/` (or `TIKTOK_CACHE_DIR`). A background timer runs every **1 minute** and evicts files older than `TIKTOK_CACHE_TTL_MIN` (default **10 minutes**). DB metadata is preserved — the file is just re-downloaded next time the user plays it.
