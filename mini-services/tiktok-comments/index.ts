@@ -137,13 +137,14 @@ async function fetchComments(videoUrl: string, limit = 30): Promise<Comment[]> {
   });
 
   try {
-    await page.goto(videoUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
-    await new Promise((r) => setTimeout(r, 1500));
+    await page.goto(videoUrl, { waitUntil: "networkidle2", timeout: 60_000 });
+    await new Promise((r) => setTimeout(r, 2000));
 
     // Accept GDPR consent (EEA proxy regions show a banner that blocks comments).
     await acceptConsent(page);
-    await page.reload({ waitUntil: "domcontentloaded", timeout: 45_000 });
-    await new Promise((r) => setTimeout(r, 2000));
+    // Reload to apply consent cookies.
+    await page.reload({ waitUntil: "networkidle2", timeout: 60_000 });
+    await new Promise((r) => setTimeout(r, 3000));
 
     // Click the comment icon — TikTok fires the signed comment API request.
     const commentSelectors = [
