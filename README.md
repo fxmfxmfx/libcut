@@ -10,6 +10,8 @@ libcut is the [redlib](https://github.com/redlib-org/redlib) / [libreddit](https
 
 > ⚠️ Completely vibe-coded by GLM 5.2 on chat.z.ai
 
+> ⚠️ Client mode (for public instances) works bad 
+
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/yt-dlp/yt-dlp/pulls)
