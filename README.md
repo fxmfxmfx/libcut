@@ -7,6 +7,7 @@
 libcut is the [redlib](https://github.com/redlib-org/redlib) / [libreddit](https://github.com/libreddit/libreddit) idea, but for TikTok. You run it on your own server, subscribe to creators by `@username`, and get a clean feed of new, unwatched videos — with comments, favorites, downloads, photo carousels, and full author profiles. All TikTok traffic is funneled through a SOCKS5 proxy and [`yt-dlp`](https://github.com/yt-dlp/yt-dlp); no third-party TikTok scripts or pixels ever execute in your browser.
 
 > ⚠️ Intended for **personal** use. Respect copyright and TikTok's Terms of Service.
+
 > ⚠️ Completely vibe-coded by GLM 5.2 on chat.z.ai
 
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
