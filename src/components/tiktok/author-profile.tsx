@@ -29,8 +29,8 @@ export function AuthorProfile({ username }: { username: string }) {
   const subscribe = useSubscribe();
   const markAllSeen = useMarkAllSeen();
   const { closeAuthor, t, lang, dataMode } = useView();
-  const clientIsSeen = useClientData((s) => s.isSeen);
-  const clientMarkAllSeen = useClientData((s) => s.markSeen);
+  const clientSeen = useClientData((s) => s.seenVideoIds);
+  const clientMarkAllSeen = useClientData((s) => s.markSeenMany);
   const clientSubs = useClientData((s) => s.subscriptions);
   const { toast } = useToast();
   const [loadingMore, setLoadingMore] = useState(false);
@@ -45,7 +45,7 @@ export function AuthorProfile({ username }: { username: string }) {
           title: "OK",
           description:
             res.newVideos > 0
-              ? `${res.newVideos} ${t("feed.found", { n: res.newVideos })}`
+              ? t("feed.found", { n: res.newVideos })
               : t("feed.empty.title"),
         });
       } else {
@@ -74,13 +74,8 @@ export function AuthorProfile({ username }: { username: string }) {
     if (dataMode === "client") {
       // Client mode: mark all videos as seen in localStorage
       if (data) {
-        let count = 0;
-        for (const v of data.videos) {
-          if (!clientIsSeen(v.id)) {
-            clientMarkAllSeen(v.id);
-            count++;
-          }
-        }
+        const count = data.videos.filter((v) => !clientSeen.includes(v.id) && !clientSeen.includes(v.tiktokId)).length;
+        clientMarkAllSeen(data.videos.map((v) => ({ videoId: v.id, tiktokId: v.tiktokId })));
         toast({ description: t("author.markAllSeen.done", { n: count }) });
       }
       return;
@@ -93,7 +88,7 @@ export function AuthorProfile({ username }: { username: string }) {
     }
   }
 
-  async function handleToggleSub() {
+  async function toggleSubscription() {
     if (!data) return;
     if (dataMode === "client") {
       // Client mode: subscribe/unsubscribe via localStorage
@@ -122,6 +117,11 @@ export function AuthorProfile({ username }: { username: string }) {
     } else {
       await subscribe.mutateAsync(username);
     }
+  }
+
+  async function handleToggleSub() {
+    try { await toggleSubscription(); }
+    catch (e) { toast({ variant: "destructive", description: (e as Error).message }); }
   }
 
   if (isLoading) {
@@ -166,7 +166,7 @@ export function AuthorProfile({ username }: { username: string }) {
   const { author, videos } = data;
   // In client mode, check seen-state from localStorage; otherwise from API.
   const hasUnseen = dataMode === "client"
-    ? videos.some((v) => !clientIsSeen(v.id))
+    ? videos.some((v) => !clientSeen.includes(v.id) && !clientSeen.includes(v.tiktokId))
     : videos.some((v) => !v.seen);
   // In client mode, check subscription from localStorage.
   const isSubscribed = dataMode === "client"

@@ -9,6 +9,10 @@ export type Lang = "en" | "ru";
 type Dict = Record<string, string>;
 
 const en: Dict = {
+  "status.proxyConfigured": "Proxy configured",
+  "common.retry": "Try again",
+  "player.video": "Video",
+  "feed.partial": "Could not refresh {n} subscriptions. Showing available videos.",
   // Nav
   "nav.feed": "Feed",
   "nav.subscriptions": "Subscriptions",
@@ -17,7 +21,7 @@ const en: Dict = {
   "nav.settings": "Settings",
 
   // Search
-  "search.placeholder": "Search authors and videos…",
+  "search.placeholder": "@username, keywords or TikTok link…",
   "search.authors": "Authors",
   "search.videos": "Videos",
   "search.all": "All",
@@ -189,13 +193,17 @@ const en: Dict = {
 };
 
 const ru: Dict = {
+  "status.proxyConfigured": "Прокси настроен",
+  "common.retry": "Повторить",
+  "player.video": "Видео",
+  "feed.partial": "Не удалось обновить подписки: {n}. Показаны доступные видео.",
   "nav.feed": "Лента",
   "nav.subscriptions": "Подписки",
   "nav.favorites": "Избранное",
   "nav.search": "Поиск",
   "nav.settings": "Настройки",
 
-  "search.placeholder": "Поиск авторов и видео…",
+  "search.placeholder": "@ник, слова или ссылка TikTok…",
   "search.authors": "Авторы",
   "search.videos": "Видео",
   "search.all": "Всё",

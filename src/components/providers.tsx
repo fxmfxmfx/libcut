@@ -1,10 +1,11 @@
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useState, type ReactNode } from "react";
 import { useSettings, useStatus } from "@/lib/tiktok/queries";
-import { useView } from "@/lib/tiktok/store";
+import { useView, getLocalStorageError, localStorageErrorEvent, preferencesStorageKey, reportLocalStorageError } from "@/lib/tiktok/store";
+import { clientDataStorageKey, resetClientDataFromStorage, useClientData } from "@/lib/tiktok/client-data";
 import type { Lang } from "@/lib/tiktok/i18n";
 
 export function Providers({ children }: { children: ReactNode }) {
@@ -23,6 +24,7 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={client}>
       <SettingsSync />
+      <StorageNotice />
       {children}
     </QueryClientProvider>
   );
@@ -44,6 +46,47 @@ function SettingsSync() {
   const setCustomCss = useView((s) => s.setCustomCss);
   const setAutoMarkSeen = useView((s) => s.setAutoMarkSeen);
   const setDataMode = useView((s) => s.setDataMode);
+  const hydratePreferences = useView((s) => s.hydratePreferences);
+
+  useEffect(() => {
+    hydratePreferences();
+    void useClientData.persist.rehydrate();
+  }, [hydratePreferences]);
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== null && event.key !== preferencesStorageKey && event.key !== clientDataStorageKey) return;
+      if (event.url) {
+        try {
+          if (new URL(event.url).origin !== window.location.origin) return;
+        } catch {
+          return;
+        }
+      }
+      try {
+        const storage = window.localStorage;
+        if (event.storageArea && event.storageArea !== storage) return;
+      } catch {
+        const message = "Browser storage is unavailable. Changes from other tabs could not be synchronized.";
+        reportLocalStorageError("preferences", message);
+        reportLocalStorageError("clientData", message);
+        return;
+      }
+
+      if (event.key === null) {
+        resetClientDataFromStorage();
+        hydratePreferences(true);
+      } else if (event.key === clientDataStorageKey) {
+        if (event.newValue === null) resetClientDataFromStorage();
+        else void useClientData.persist.rehydrate();
+      } else {
+        hydratePreferences(true);
+      }
+    };
+
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [hydratePreferences]);
 
   // Sync dataMode from env config (via status endpoint).
   useEffect(() => {
@@ -55,7 +98,9 @@ function SettingsSync() {
   // Only sync appearance settings from server DB in local mode.
   // In client mode, these are localStorage-only.
   useEffect(() => {
-    if (!settingsData) return;
+    // Do not let the settings query's initial/default data overwrite client
+    // preferences before the status endpoint has identified this instance.
+    if (!statusData || !settingsData) return;
     // In client mode, don't touch appearance settings — they're in localStorage.
     if (statusData?.dataMode === "client") return;
 
@@ -70,4 +115,13 @@ function SettingsSync() {
   }, [settingsData, statusData?.dataMode, setLang, setTheme, setAccent, setCustomCss, setAutoMarkSeen]);
 
   return null;
+}
+
+function subscribeStorageError(callback: () => void) {
+  window.addEventListener(localStorageErrorEvent, callback);
+  return () => window.removeEventListener(localStorageErrorEvent, callback);
+}
+function StorageNotice() {
+  const error = useSyncExternalStore(subscribeStorageError, getLocalStorageError, () => null);
+  return error ? <div role="alert" className="border-b border-amber-500/40 bg-amber-500/10 p-3 text-sm">{error}</div> : null;
 }

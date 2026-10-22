@@ -64,6 +64,8 @@ model Video {
   cachedAt      DateTime?
   /// Direct streamable URL (when available from yt-dlp, used as fallback to cache)
   streamUrl     String?
+  /// Last successful metadata refresh; CDN image URLs expire.
+  metadataFetchedAt DateTime?
   /// Photo carousel / image post (swipeable slides) instead of a video.
   isGallery     Boolean   @default(false)
   /// JSON-encoded array of image URLs for a gallery post.

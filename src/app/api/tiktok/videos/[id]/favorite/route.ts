@@ -1,3 +1,4 @@
+import { requireLocalMode } from "@/lib/tiktok/access";
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { json, errorJson } from "@/lib/tiktok/http";
@@ -10,6 +11,8 @@ export const dynamic = "force-dynamic";
  * DELETE /api/tiktok/videos/[id]/favorite -> remove from favorites
  */
 export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const denied = requireLocalMode(_req);
+  if (denied) return denied;
   await ensureInitialized();
   const { id } = await ctx.params;
   const v = await db.video.findUnique({ where: { id }, select: { id: true } });
@@ -23,6 +26,8 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: strin
 }
 
 export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const denied = requireLocalMode(_req);
+  if (denied) return denied;
   await ensureInitialized();
   const { id } = await ctx.params;
   await db.favorite.deleteMany({ where: { videoId: id } });

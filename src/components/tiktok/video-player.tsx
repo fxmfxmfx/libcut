@@ -48,7 +48,10 @@ import { ExternalLinkButton } from "./external-link-button";
 export function VideoPlayer({ videoId }: { videoId: string }) {
   const { data, isLoading, isError, error } = useVideo(videoId);
   const [commentsEnabled, setCommentsEnabled] = useState(false);
-  const comments = useComments(videoId, commentsEnabled);
+  const [mobileComments, setMobileComments] = useState(false);
+  const [refreshingComments, setRefreshingComments] = useState(false);
+  const commentsId = data?.video.id ?? null;
+  const comments = useComments(commentsId, commentsEnabled);
   const toggleFav = useToggleFavorite();
   const markSeen = useMarkSeen();
   const closeVideo = useView((s) => s.closeVideo);
@@ -63,16 +66,18 @@ export function VideoPlayer({ videoId }: { videoId: string }) {
   const clientMarkSeen = useClientData((s) => s.markSeen);
   const clientAddFav = useClientData((s) => s.addFavorite);
   const clientRemoveFav = useClientData((s) => s.removeFavorite);
-  const clientIsFav = useClientData((s) => s.isFavorited);
+  const clientFavs = useClientData((s) => s.favorites);
+  const clientSeen = useClientData((s) => s.seenVideoIds);
+  const clientMarkUnseen = useClientData((s) => s.markUnseen);
 
   useEffect(() => {
     if (!data || seenRef.current) return;
     if (autoMarkSeen) {
       seenRef.current = true;
       if (dataMode === "client") {
-        clientMarkSeen(videoId);
+        clientMarkSeen(data.video.id, data.video.tiktokId);
       } else if (!data.video.seen) {
-        markSeen.mutate({ id: videoId, seen: true });
+        markSeen.mutate({ id: data.video.id, seen: true });
       }
     } else {
       seenRef.current = true;
@@ -91,18 +96,28 @@ export function VideoPlayer({ videoId }: { videoId: string }) {
   }
 
   async function handleRefreshComments() {
-    await qc.invalidateQueries({ queryKey: ["comments", videoId] });
+    if (refreshingComments || !commentsId) return;
+    setCommentsEnabled(true);
+    setRefreshingComments(true);
     try {
-      const r = await fetch(`/api/tiktok/videos/${videoId}/comments?refresh=1`);
-      if (r.ok) qc.invalidateQueries({ queryKey: ["comments", videoId] });
-    } catch {
-      // ignore
-    }
+      await qc.cancelQueries({ queryKey: ["comments", commentsId] });
+      const r = await fetch(`/api/tiktok/videos/${commentsId}/comments?refresh=1`);
+      const result = await r.json();
+      if (!r.ok) throw new Error(result.error || `HTTP ${r.status}`);
+      qc.setQueryData(["comments", commentsId], result);
+    } catch (e) {
+      toast({ variant: "destructive", description: (e as Error).message });
+    } finally { setRefreshingComments(false); }
   }
 
   const video = data?.video;
   const author = data?.author;
-  const isFav = dataMode === "client" ? clientIsFav(videoId) : !!video?.isFavorited;
+  const isFav = dataMode === "client"
+    ? clientFavs.some((f) => f.videoId === video?.id || f.tiktokId === video?.tiktokId)
+    : !!video?.isFavorited;
+  const isSeen = dataMode === "client"
+    ? clientSeen.includes(video?.id ?? "") || clientSeen.includes(video?.tiktokId ?? "")
+    : !!video?.seen;
 
   return (
     <Dialog
@@ -112,22 +127,28 @@ export function VideoPlayer({ videoId }: { videoId: string }) {
       }}
     >
       <DialogContent
-        className="!top-1/2 !left-1/2 h-[100dvh] !max-w-none !w-screen !translate-x-[-50%] !translate-y-[-50%] gap-0 overflow-hidden border-0 bg-card p-0 !rounded-none [&>button]:hidden"
+        className="!flex !flex-col !top-1/2 !left-1/2 h-[100dvh] !max-w-none !w-screen !translate-x-[-50%] !translate-y-[-50%] gap-0 overflow-hidden border-0 bg-card p-0 !rounded-none [&>button]:hidden"
       >
         <span className="sr-only">
           <DialogTitle>{video?.title ?? t("nav.feed")}</DialogTitle>
           <DialogDescription>{t("player.comments")}</DialogDescription>
         </span>
 
+        <div className="flex shrink-0 items-center gap-2 border-b border-border/60 bg-card p-2 pt-[max(0.5rem,env(safe-area-inset-top))] lg:hidden">
+          <Button size="sm" variant={!mobileComments ? "default" : "ghost"} aria-pressed={!mobileComments} onClick={() => setMobileComments(false)}><Play className="size-4" />{t("player.video")}</Button>
+          <Button size="sm" variant={mobileComments ? "default" : "ghost"} aria-pressed={mobileComments} onClick={() => { setMobileComments(true); setCommentsEnabled(true); }}><MessageCircle className="size-4" />{t("player.comments")}</Button>
+          <Button size="icon" variant="ghost" className="ml-auto" aria-label={t("player.close")} onClick={closeVideo}><X className="size-5" /></Button>
+        </div>
+
         {/* Scrollable container so on mobile the video + details + comments are all reachable.
             On desktop the layout is a side-by-side grid inside this scroll area. */}
-        <div className="flex h-full flex-col overflow-y-auto lg:grid lg:grid-cols-[minmax(0,1fr)_400px] lg:overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:grid lg:grid-cols-[minmax(0,1fr)_400px] lg:overflow-hidden">
           {/* ---- Video / slides pane ---- */}
-          <div className="relative flex h-[60vh] shrink-0 items-center justify-center bg-black lg:h-full lg:min-h-0">
+          <div className={cn("relative h-[48dvh] shrink-0 items-center justify-center bg-black lg:h-full lg:min-h-0 lg:flex", mobileComments ? "hidden" : "flex")}>
             {/* Close button (always visible, top-right of the media pane) */}
             <button
               onClick={closeVideo}
-              className="absolute right-3 top-3 z-20 grid size-10 place-items-center rounded-full bg-black/60 text-white backdrop-blur transition-colors hover:bg-black/80"
+              className="absolute right-3 top-3 z-20 hidden lg:grid grid size-10 place-items-center rounded-full bg-black/60 text-white backdrop-blur transition-colors hover:bg-black/80"
               aria-label={t("player.close")}
             >
               <X className="size-5" />
@@ -156,7 +177,7 @@ export function VideoPlayer({ videoId }: { videoId: string }) {
           </div>
 
           {/* ---- Details + comments pane ---- */}
-          <div className="flex min-h-0 flex-col bg-card lg:h-full lg:overflow-hidden">
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain bg-card lg:h-full lg:overflow-hidden">
             {isLoading ? (
               <div className="space-y-4 p-4">
                 <Skeleton className="h-4 w-24" />
@@ -189,7 +210,7 @@ export function VideoPlayer({ videoId }: { videoId: string }) {
                     </div>
                   </button>
                   <div className="ml-auto flex items-center gap-2">
-                    {video.seen && (
+                    {isSeen && (
                       <Badge variant="secondary" className="gap-1 text-[10px]">
                         <CheckCircle2 className="size-3" /> {t("video.watched")}
                       </Badge>
@@ -198,8 +219,8 @@ export function VideoPlayer({ videoId }: { videoId: string }) {
                 </div>
 
                 {/* Scrollable details + comments (desktop) / inline (mobile) */}
-                <div className="flex min-h-0 flex-1 flex-col lg:overflow-hidden">
-                  <div className="space-y-3 p-4">
+                <div className="flex flex-col lg:min-h-0 lg:flex-1 lg:overflow-hidden">
+                  <div className={cn("space-y-3 p-4 lg:block", mobileComments && "hidden")}>
                     {video.title && (
                       <p className="whitespace-pre-line break-words text-sm leading-relaxed text-foreground">
                         {video.title}
@@ -228,6 +249,7 @@ export function VideoPlayer({ videoId }: { videoId: string }) {
                       {video.duration ? <span>· {formatDuration(video.duration)}</span> : null}
                     </div>
 
+                    {(toggleFav.error || markSeen.error) && <p role="alert" className="text-sm text-destructive">{(toggleFav.error || markSeen.error)?.message}</p>}
                     {/* Action buttons */}
                     <div className="flex flex-wrap gap-2 pt-1">
                       <Button
@@ -237,15 +259,18 @@ export function VideoPlayer({ videoId }: { videoId: string }) {
                         onClick={() => {
                           if (dataMode === "client") {
                             if (isFav) {
-                              clientRemoveFav(videoId);
+                              clientRemoveFav(video.id, video.tiktokId);
                             } else if (video) {
                               clientAddFav({
-                                videoId,
+                                videoId: video.id,
                                 tiktokId: video.tiktokId,
                                 url: video.url,
                                 title: video.title,
                                 thumbnailUrl: video.thumbnailUrl,
                                 duration: video.duration,
+                                description: video.description,
+                                viewCount: video.viewCount, likeCount: video.likeCount, commentCount: video.commentCount,
+                                publishedAt: video.publishedAt, isGallery: video.isGallery, images: video.images,
                                 authorUsername: author?.username ?? "",
                                 authorDisplayName: author?.displayName ?? null,
                                 authorAvatarUrl: author?.avatarUrl ?? null,
@@ -253,7 +278,7 @@ export function VideoPlayer({ videoId }: { videoId: string }) {
                               });
                             }
                           } else {
-                            toggleFav.mutate({ id: videoId, fav: !isFav });
+                            toggleFav.mutate({ id: video.id, fav: !isFav });
                           }
                         }}
                         disabled={toggleFav.isPending}
@@ -261,17 +286,23 @@ export function VideoPlayer({ videoId }: { videoId: string }) {
                         <Heart className={cn("size-4", isFav && "fill-current")} />
                         {isFav ? t("player.favorited") : t("player.favorite")}
                       </Button>
-                      <Button size="sm" variant="outline" className="gap-1.5" onClick={handleDownload}>
+                      <Button size="sm" variant="outline" className="gap-1.5" onClick={handleDownload} disabled={video.isGallery}>
                         <Download className="size-4" /> {t("player.download")}
                       </Button>
                       <Button
                         size="sm"
                         variant="outline"
                         className="gap-1.5"
-                        onClick={() => markSeen.mutate({ id: videoId, seen: !video.seen })}
+                        onClick={() => {
+                          if (dataMode === "client") {
+                            if (isSeen) clientMarkUnseen(video.id, video.tiktokId);
+                            else clientMarkSeen(video.id, video.tiktokId);
+                          } else markSeen.mutate({ id: video.id, seen: !isSeen });
+                        }}
+                        disabled={markSeen.isPending}
                       >
                         <CheckCircle2 className="size-4" />
-                        {video.seen ? t("player.markNew") : t("player.markWatched")}
+                        {isSeen ? t("player.markNew") : t("player.markWatched")}
                       </Button>
                       <ExternalLinkButton href={video.url}>
                         <Button size="sm" variant="ghost" className="gap-1.5">
@@ -282,7 +313,7 @@ export function VideoPlayer({ videoId }: { videoId: string }) {
                   </div>
 
                   {/* Comments */}
-                  <div className="flex min-h-0 flex-1 flex-col border-t border-border/60 lg:overflow-hidden">
+                  <div className="flex flex-col border-t border-border/60 lg:min-h-0 lg:flex-1 lg:overflow-hidden">
                     <div className="flex items-center justify-between px-4 py-3">
                       <h3 className="flex items-center gap-2 text-sm font-semibold">
                         <MessageCircle className="size-4" />
@@ -298,9 +329,9 @@ export function VideoPlayer({ videoId }: { videoId: string }) {
                         size="sm"
                         className="gap-1.5 text-xs"
                         onClick={handleRefreshComments}
-                        disabled={comments.isFetching}
+                        disabled={comments.isFetching || refreshingComments}
                       >
-                        {comments.isFetching ? (
+                        {comments.isFetching || refreshingComments ? (
                           <Loader2 className="size-3.5 animate-spin" />
                         ) : (
                           <RefreshCw className="size-3.5" />
@@ -309,7 +340,7 @@ export function VideoPlayer({ videoId }: { videoId: string }) {
                       </Button>
                     </div>
 
-                    <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-20 lg:pb-4">
+                    <div className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
                       {!commentsEnabled ? (
                         <div className="grid place-items-center py-8 text-center">
                           <Button
@@ -325,7 +356,7 @@ export function VideoPlayer({ videoId }: { videoId: string }) {
                             {t("player.comments.slow")}
                           </p>
                         </div>
-                      ) : comments.isLoading || comments.isFetching ? (
+                      ) : comments.isLoading || refreshingComments ? (
                         <div className="space-y-3">
                           <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <Loader2 className="size-4 animate-spin text-primary" />
@@ -341,9 +372,9 @@ export function VideoPlayer({ videoId }: { videoId: string }) {
                             </div>
                           ))}
                         </div>
-                      ) : comments.data?.error && !comments.data.comments?.length ? (
+                      ) : comments.error || (comments.data?.error && !comments.data.comments?.length) ? (
                         <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-400">
-                          {t("player.comments.fail", { err: comments.data.error })}
+                          {t("player.comments.fail", { err: comments.error?.message ?? comments.data?.error ?? "" })}
                         </div>
                       ) : (comments.data?.comments?.length ?? 0) === 0 ? (
                         <div className="grid place-items-center py-8 text-center text-sm text-muted-foreground">
@@ -370,6 +401,8 @@ function VideoElement({ src, poster, t }: { src: string | null | undefined; post
   const [muted, setMuted] = useState(true);
   const [volume, setVolume] = useState(1);
   const [showVolume, setShowVolume] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   // Always show controls. Try muted autoplay (allowed on all browsers including iOS).
   function toggleMute() {
@@ -400,14 +433,17 @@ function VideoElement({ src, poster, t }: { src: string | null | undefined; post
       onMouseEnter={() => setShowVolume(true)}
       onMouseLeave={() => setShowVolume(false)}
     >
+      {failed && <div role="alert" className="absolute z-10 rounded-lg bg-black/85 p-5 text-center text-white"><p>{t("player.failed")}</p><Button className="mt-3" variant="secondary" onClick={() => { setFailed(false); setAttempt((n) => n + 1); }}>{t("common.retry")}</Button></div>}
       <video
+        key={attempt}
+        onError={() => setFailed(true)}
         ref={ref}
         src={src ?? undefined}
         poster={poster}
         controls
         autoPlay
         loop
-        muted
+        muted={muted}
         playsInline
         onVolumeChange={(e) => {
           const v = e.currentTarget;
@@ -447,6 +483,7 @@ function SlidesViewer({
   t: (k: string, vars?: Record<string, string | number>) => string;
 }) {
   const [idx, setIdx] = useState(0);
+  const touchStart = useRef<number | null>(null);
   const total = images.length;
 
   const prev = () => setIdx((i) => (i - 1 + total) % total);
@@ -463,7 +500,14 @@ function SlidesViewer({
   }, [total]);
 
   return (
-    <div className="relative flex h-full max-h-[100dvh] w-full items-center justify-center">
+    <div className="relative flex h-full max-h-[100dvh] w-full items-center justify-center"
+      onTouchStart={(e) => { touchStart.current = e.touches[0]?.clientX ?? null; }}
+      onTouchEnd={(e) => {
+        if (touchStart.current === null) return;
+        const delta = (e.changedTouches[0]?.clientX ?? touchStart.current) - touchStart.current;
+        if (Math.abs(delta) > 45) { if (delta < 0) next(); else prev(); }
+        touchStart.current = null;
+      }}>
       <img
         src={images[idx]}
         alt={`${title} — ${t("player.slides", { n: idx + 1, total })}`}
@@ -513,7 +557,8 @@ function CommentTree({ comments, lang }: { comments: CommentInfo[]; lang: Lang }
   // Build tree: top-level comments (parentId=null) with their replies.
   // Match replies to parents using tiktokCid (TikTok's comment cid), since
   // parentId from the API is a TikTok cid, not our DB cuid.
-  const topLevel = comments.filter((c) => !c.parentId);
+  const parentIds = new Set(comments.map((c) => c.tiktokCid));
+  const topLevel = comments.filter((c) => !c.parentId || !parentIds.has(c.parentId));
   const repliesByParent = new Map<string, CommentInfo[]>();
   for (const c of comments) {
     if (c.parentId) {
@@ -565,7 +610,7 @@ function CommentItem({ c, lang, isReply }: { c: CommentInfo; lang: Lang; isReply
             </span>
           )}
         </div>
-        <p className="break-words text-sm leading-snug text-foreground/90">
+        <p className="whitespace-pre-wrap break-words text-sm leading-snug text-foreground/90">
           {c.text}
         </p>
         <div className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">

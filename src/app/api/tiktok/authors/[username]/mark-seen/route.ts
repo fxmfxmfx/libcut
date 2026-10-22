@@ -1,3 +1,4 @@
+import { requireLocalMode } from "@/lib/tiktok/access";
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { json, errorJson, cleanUsername } from "@/lib/tiktok/http";
@@ -10,6 +11,8 @@ export const dynamic = "force-dynamic";
  * Mark ALL stored videos of this author as seen (so they leave the feed).
  */
 export async function POST(_req: NextRequest, ctx: { params: Promise<{ username: string }> }) {
+  const denied = requireLocalMode(_req);
+  if (denied) return denied;
   await ensureInitialized();
   const username = cleanUsername((await ctx.params).username);
   const author = await db.author.findUnique({ where: { username } });

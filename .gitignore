@@ -69,3 +69,20 @@ db/*.db-shm
 # OS
 .DS_Store
 Thumbs.db
+
+# Local configuration
+.env
+.env.*
+!.env.example
+
+# Browser test artifacts
+/test-results/
+/playwright-report/
+/.playwright-mcp/
+
+# Local SQLite databases
+/prisma/*.db
+/prisma/*.db-*
+
+# Local backups may contain credentials or private databases
+/backup/

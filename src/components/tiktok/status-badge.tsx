@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 
 export function StatusBadge() {
   const { data, isLoading } = useStatus();
-  const proxyCheck = useProxyCheck();
+  const proxyCheck = useProxyCheck(!!data && !data.demoMode && data.proxyConfigured && data.dataMode === "local");
   const { t } = useView();
 
   if (isLoading || !data) {
@@ -53,6 +53,9 @@ export function StatusBadge() {
       </TooltipProvider>
     );
   }
+
+  if (data.dataMode === "client") return <Badge variant="outline" className="gap-1"><ShieldCheck className="size-3" />{t("status.proxyConfigured")}</Badge>;
+  if (proxyCheck.isError) return <Badge variant="outline" className="gap-1 text-destructive"><ShieldAlert className="size-3" />{t("status.proxybad")}</Badge>;
 
   // Proxy is configured — check if it actually works.
   if (proxyCheck.isLoading) {

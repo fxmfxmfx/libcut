@@ -38,3 +38,10 @@ README.en.md
 LICENSE
 preview*.png
 preview-*.png
+
+# Browser test artifacts and local databases
+test-results
+playwright-report
+.playwright-mcp
+prisma/*.db
+prisma/*.db-*

@@ -1,23 +1,5 @@
-:81 {
-	@transform_port_query {
-		query XTransformPort=*
-	}
-
-	handle @transform_port_query {
-		reverse_proxy localhost:{query.XTransformPort} {
-			header_up Host {host}
-			header_up X-Forwarded-For {remote_host}
-			header_up X-Forwarded-Proto {scheme}
-			header_up X-Real-IP {remote_host}
-		}
-	}
-
-	handle {
-		reverse_proxy localhost:3000 {
-			header_up Host {host}
-			header_up X-Forwarded-For {remote_host}
-			header_up X-Forwarded-Proto {scheme}
-			header_up X-Real-IP {remote_host}
-		}
-	}
+# Optional local reverse proxy. There is no authentication in libcut.
+# Keep this listener on loopback unless access is restricted to a trusted LAN.
+http://127.0.0.1:81 {
+    reverse_proxy 127.0.0.1:3000
 }

@@ -1,12 +1,15 @@
 {
   "name": "tiktok-comments-service",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "scripts": {
-    "dev": "bun --hot index.ts"
+    "dev": "bun --hot index.ts",
+    "test": "bun test search-parsing.test.ts",
+    "typecheck": "tsc --noEmit --target es2022 --module esnext --moduleResolution bundler --esModuleInterop --skipLibCheck --types bun-types index.ts search-parsing.ts"
   },
   "dependencies": {
-    "puppeteer": "^23.0.0",
+    "proxy-chain": "^3.0.1",
+    "puppeteer": "^25.15.0",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2"
   }

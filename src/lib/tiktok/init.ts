@@ -3,6 +3,7 @@
  * Safe to call repeatedly; runs at most once per process.
  */
 
+import { db } from "@/lib/db";
 import { seedDemoData } from "./seed";
 import { startCacheCleanup, ensureCacheDir } from "./cache";
 import { tiktokConfig } from "./config";
@@ -14,6 +15,7 @@ export async function ensureInitialized(): Promise<void> {
   if (initialized) return;
   if (!initPromise) {
     initPromise = (async () => {
+      await db.setting.count();
       await ensureCacheDir();
       startCacheCleanup();
       if (tiktokConfig.demoMode) {
@@ -25,7 +27,7 @@ export async function ensureInitialized(): Promise<void> {
         }
       }
       initialized = true;
-    })();
+    })().catch((error) => { initPromise = null; throw error; });
   }
   await initPromise;
 }

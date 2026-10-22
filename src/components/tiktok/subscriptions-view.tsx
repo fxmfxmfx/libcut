@@ -48,7 +48,8 @@ export function SubscriptionsView() {
         <SubscribeDialog />
       </div>
 
-      {subs.isLoading ? (
+      {subs.error && <div role="alert" className="rounded-lg border border-destructive/40 p-4 text-sm"><p>{subs.error.message}</p><Button size="sm" variant="outline" onClick={() => subs.refetch()}>{t("common.retry")}</Button></div>}
+      {dataMode === "local" && subs.isLoading ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="h-28 animate-pulse rounded-xl bg-muted" />
@@ -90,12 +91,12 @@ export function SubscriptionsView() {
                     <span className="inline-flex items-center gap-1">
                       <Users className="size-3" /> {formatCount(a.followerCount)}
                     </span>
-                    <span className="inline-flex items-center gap-1">
+                    {dataMode === "local" && <><span className="inline-flex items-center gap-1">
                       <VideoIcon className="size-3" /> {a.storedVideoCount}
                     </span>
                     <span className="inline-flex items-center gap-1">
                       <Eye className="size-3" /> {a.unseenCount}
-                    </span>
+                    </span></>}
                     {a.lastCheckedAt && <span>{timeAgo(a.lastCheckedAt, lang)}</span>}
                   </div>
                 </div>

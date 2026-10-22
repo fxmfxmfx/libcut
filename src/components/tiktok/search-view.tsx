@@ -49,16 +49,18 @@ export function SearchView() {
           title={t("search.start")}
           description={t("search.start.desc")}
         />
-      ) : search.isLoading || search.isFetching ? (
+      ) : search.isLoading ? (
         <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground">
           <Loader2 className="size-8 animate-spin text-primary" />
           <p className="text-sm">{t("search.loading")}</p>
         </div>
       ) : (
         <>
+          {search.isFetching && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />{t("search.loading")}</p>}
           {search.data?.liveError && (
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-400">
-              {search.data.liveError}
+              <p>{search.data.liveError}</p>
+              <Button size="sm" variant="ghost" onClick={search.refetch}>{t("common.retry")}</Button>
             </div>
           )}
 
@@ -102,6 +104,7 @@ export function SearchView() {
                       key={v.id ?? `${v.tiktokId}-${i}`}
                       video={normalizeVideo(v)}
                       showAuthor
+                      showSeen
                     />
                   ))}
                 </div>

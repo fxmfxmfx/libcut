@@ -12,7 +12,9 @@
 
 import { getEffectiveProxy } from "./config";
 import type { AuthorProfile, VideoMeta, VideoComment, AuthorVideo } from "./types";
-import { execFileSync } from "child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+const execFileAsync = promisify(execFile);
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
@@ -21,7 +23,10 @@ const UA =
 async function fetchHtml(url: string, timeoutMs = 30_000): Promise<string> {
   const proxy = await getEffectiveProxy();
   const args = [
-    "-sL",
+    "-fsSL",
+    "--proto", "=https",
+    "--proto-redir", "=https",
+    "--max-redirs", "3",
     "--compressed",
     "--max-time", String(Math.floor(timeoutMs / 1000)),
     "-H", `User-Agent: ${UA}`,
@@ -29,20 +34,15 @@ async function fetchHtml(url: string, timeoutMs = 30_000): Promise<string> {
     "-H", "Accept-Language: en-US,en;q=0.9",
     "-H", "Referer: https://www.tiktok.com/",
   ];
-  if (proxy) {
-    if (proxy.startsWith("socks5")) {
-      args.push("--socks5", proxy.replace(/^socks5:\/\//, "").replace(/^socks5h:\/\//, ""));
-    } else if (proxy.startsWith("http")) {
-      args.push("--proxy", proxy);
-    }
-  }
+  if (proxy) args.push("--proxy", proxy);
   args.push(url);
   try {
-    return execFileSync("curl", args, {
+    const { stdout } = await execFileAsync("curl", args, {
       timeout: timeoutMs,
       maxBuffer: 10 * 1024 * 1024,
       encoding: "utf8",
     });
+    return stdout;
   } catch {
     return "";
   }
@@ -51,7 +51,7 @@ async function fetchHtml(url: string, timeoutMs = 30_000): Promise<string> {
 /** Extract the __UNIVERSAL_DATA_FOR_REHYDRATION__ JSON from a TikTok page HTML string. */
 function extractUniversalData(html: string): any | null {
   const m = html.match(
-    /<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application\/json">(.*?)<\/script>/,
+    /<script[^>]*id=["']__UNIVERSAL_DATA_FOR_REHYDRATION__["'][^>]*>([\s\S]*?)<\/script>/,
   );
   if (!m) return null;
   try {
@@ -93,7 +93,7 @@ export async function scrapeAuthorProfile(username: string): Promise<AuthorProfi
     userDetail?.userInfo?.user ??
     findObjWithKeys(data, ["uniqueId", "nickname"]) ??
     findObjWithKeys(data, ["uniqueId", "avatarLarger"]);
-  if (!user || !user.uniqueId) return null;
+  if (!user || !user.uniqueId || user.uniqueId.toLowerCase() !== u.toLowerCase()) return null;
   const stats = userDetail?.userInfo?.stats ?? findObjWithKeys(data, ["followerCount", "followingCount"]) ?? {};
   return {
     username: user.uniqueId,
@@ -144,6 +144,8 @@ export async function scrapeVideoMeta(videoUrl: string): Promise<Partial<VideoMe
       imagePost.cover ??
       null,
     duration: video.duration ?? 0,
+    width: video.width ?? 0,
+    height: video.height ?? 0,
     viewCount: stats.playCount ?? 0,
     likeCount: stats.diggCount ?? 0,
     commentCount: stats.commentCount ?? 0,
@@ -158,8 +160,18 @@ export async function scrapeVideoMeta(videoUrl: string): Promise<Partial<VideoMe
   };
 }
 
-export async function scrapeSearch(_query: string): Promise<any[]> {
-  return [];
+export async function scrapeSearch(query: string): Promise<any[]> {
+  const url = new URL("http://127.0.0.1:3040/search");
+  url.searchParams.set("q", query);
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(45_000), headers: { "x-libcut-proxy": (await getEffectiveProxy()) ?? "" } });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || "TikTok search unavailable");
+    if (!Array.isArray(body.results)) throw new Error("Invalid search response");
+    return body.results;
+  } catch (e) {
+    throw new Error(`TikTok search: ${(e as Error).name === "TimeoutError" ? "request timed out" : (e as Error).message}`);
+  }
 }
 
 export async function scrapeComments(_videoUrl: string): Promise<VideoComment[] | null> {

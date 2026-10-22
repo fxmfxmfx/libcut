@@ -4,7 +4,6 @@ import {
   useQuery,
   useMutation,
   useQueryClient,
-  keepPreviousData,
 } from "@tanstack/react-query";
 
 const api = {
@@ -49,6 +48,9 @@ const api = {
     return r.json() as Promise<T>;
   },
 };
+
+import { useView } from "./store";
+import { useClientData } from "./client-data";
 
 // ---- Types ----
 export interface StatusInfo {
@@ -123,8 +125,9 @@ export function useStatus() {
   });
 }
 
-export function useProxyCheck() {
+export function useProxyCheck(enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ["proxy-check"],
     queryFn: () => api.get<{ ok: boolean; proxy: string | null; error: string | null }>("/api/tiktok/proxy-check"),
     staleTime: 60_000,
@@ -133,14 +136,18 @@ export function useProxyCheck() {
 }
 
 export function useFeed() {
+  const enabled = useView((s) => s.modeReady && s.dataMode === "local");
   return useQuery({
+    enabled,
     queryKey: ["feed"],
     queryFn: () => api.get<{ videos: VideoInfo[] }>("/api/tiktok/feed?limit=100"),
   });
 }
 
 export function useSubscriptions() {
+  const enabled = useView((s) => s.modeReady && s.dataMode === "local");
   return useQuery({
+    enabled,
     queryKey: ["subscriptions"],
     queryFn: () => api.get<{ subscriptions: (AuthorInfo & { unseenCount: number; storedVideoCount: number })[] }>(
       "/api/tiktok/subscriptions",
@@ -149,7 +156,9 @@ export function useSubscriptions() {
 }
 
 export function useFavorites() {
+  const enabled = useView((s) => s.modeReady && s.dataMode === "local");
   return useQuery({
+    enabled,
     queryKey: ["favorites"],
     queryFn: () => api.get<{ favorites: VideoInfo[] }>("/api/tiktok/favorites"),
   });
@@ -158,15 +167,23 @@ export function useFavorites() {
 export function useAuthor(username: string | null) {
   return useQuery({
     queryKey: ["author", username],
-    queryFn: () => api.get<{ author: AuthorInfo; videos: VideoInfo[] }>(`/api/tiktok/authors/${encodeURIComponent(username!)}`),
+    queryFn: () => api.get<{ author: AuthorInfo; videos: VideoInfo[]; refreshError?: string | null }>(`/api/tiktok/authors/${encodeURIComponent(username!)}`),
     enabled: !!username,
   });
 }
 
 export function useVideo(id: string | null) {
+  const source = useView((s) => s.openVideoSource);
+  const dataMode = useView((s) => s.dataMode);
   return useQuery({
     queryKey: ["video", id],
-    queryFn: () => api.get<{ video: VideoInfo; author: AuthorInfo }>(`/api/tiktok/videos/${id}`),
+    queryFn: () => {
+      const favorite = dataMode === "client" ? useClientData.getState().favorites.find((f) => f.tiktokId === id || f.videoId === id) : undefined;
+      const lookupId = favorite?.tiktokId ?? source?.tiktokId ?? id;
+      const url = favorite?.url ?? source?.url;
+      const suffix = url ? `?url=${encodeURIComponent(url)}` : "";
+      return api.get<{ video: VideoInfo; author: AuthorInfo }>(`/api/tiktok/videos/${lookupId}${suffix}`);
+    },
     enabled: !!id,
   });
 }
@@ -182,15 +199,58 @@ export function useComments(id: string | null, enabled = true) {
 }
 
 export function useSearch(query: string, kind: "all" | "author" | "video") {
-  return useQuery({
-    queryKey: ["search", query, kind],
-    queryFn: () =>
-      api.get<{ results: any[]; liveError: string | null }>(
-      `/api/tiktok/search?q=${encodeURIComponent(query)}&kind=${kind}`,
-    ),
-    enabled: query.trim().length > 0,
-    placeholderData: keepPreviousData,
+  const dataMode = useView((s) => s.dataMode);
+  const subscriptions = useClientData((s) => s.subscriptions);
+  const favorites = useClientData((s) => s.favorites);
+  const qc = useQueryClient();
+  const clientFeed = useQuery<{ videos: VideoInfo[] }>({
+    queryKey: ["client-feed", subscriptions.map((s) => s.username).sort()],
+    enabled: false,
   });
+  const request = (source: string, signal: AbortSignal) => fetch(`/api/tiktok/search?q=${encodeURIComponent(query)}&kind=${kind}&source=${source}`, { signal }).then(async (r) => {
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+    return data as { results: any[]; liveError: string | null };
+  });
+  const library = useQuery({
+    queryKey: ["search", query, kind, "library"],
+    queryFn: ({ signal }) => request("library", signal),
+    enabled: dataMode === "local" && query.trim().length > 0,
+  });
+  const live = useQuery({
+    queryKey: ["search", query, kind, "live"],
+    queryFn: ({ signal }) => request("live", signal),
+    enabled: query.trim().length >= 2,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const q = query.toLowerCase().replace(/^@/, "");
+  const clientResults: any[] = [];
+  if (dataMode === "client" && q) {
+    if (kind !== "video") clientResults.push(...subscriptions.filter((s) => `${s.username} ${s.displayName ?? ""}`.toLowerCase().includes(q)).map((s) => ({ ...s, kind: "author", source: "library", subscribed: true })));
+    if (kind !== "author") {
+      const known = [...(clientFeed.data?.videos ?? []), ...subscriptions.flatMap((sub) => {
+        const author = qc.getQueryData<{ author: AuthorInfo; videos: VideoInfo[] }>(["author", sub.username]);
+        return (author?.videos ?? []).map((v) => ({ ...v, author: author!.author }));
+      })];
+      clientResults.push(...known.filter((v) => `${v.title ?? ""} ${v.description ?? ""} ${v.author?.username ?? ""} ${v.url}`.toLowerCase().includes(q)).map((v) => ({ ...v, kind: "video", source: "library" })));
+    }
+    if (kind !== "author") clientResults.push(...favorites.filter((f) => `${f.title ?? ""} ${f.authorUsername} ${f.description ?? ""} ${f.url}`.toLowerCase().includes(q)).map((f) => ({
+      ...f, id: f.videoId, kind: "video", source: "library", author: { id: "", username: f.authorUsername, displayName: f.authorDisplayName, avatarUrl: f.authorAvatarUrl },
+      viewCount: f.viewCount ?? 0, likeCount: f.likeCount ?? 0, commentCount: f.commentCount ?? 0, publishedAt: f.publishedAt ?? null,
+    })));
+  }
+  const unique = new Map<string, any>();
+  for (const r of [...(dataMode === "local" ? library.data?.results ?? [] : clientResults), ...(live.data?.results ?? [])]) {
+    const key = r.kind === "author" ? `author:${r.username}` : `video:${r.tiktokId}`;
+    if (!unique.has(key)) unique.set(key, r);
+  }
+  return {
+    data: { results: [...unique.values()], liveError: live.data?.liveError ?? live.error?.message ?? library.error?.message ?? null },
+    isLoading: (library.isLoading || live.isLoading) && unique.size === 0,
+    isFetching: library.isFetching || live.isFetching,
+    refetch: () => { void library.refetch(); void live.refetch(); },
+  };
 }
 
 // ---- Mutations ----
@@ -230,7 +290,9 @@ export function useToggleFavorite() {
     },
     onSuccess: (_d, { id }) => {
       qc.invalidateQueries({ queryKey: ["favorites"] });
-      qc.invalidateQueries({ queryKey: ["video", id] });
+      qc.invalidateQueries({ queryKey: ["search"] });
+      qc.invalidateQueries({ queryKey: ["video"] });
+      qc.invalidateQueries({ queryKey: ["author"] });
     },
   });
 }
@@ -244,7 +306,12 @@ export function useMarkSeen() {
       qc.setQueryData<{ video: VideoInfo; author: AuthorInfo }>(["video", id], (old) =>
         old ? { ...old, video: { ...old.video, seen } } : old,
       );
-      if (seen) qc.invalidateQueries({ queryKey: ["feed"] });
+      qc.invalidateQueries({ queryKey: ["feed"] });
+      qc.invalidateQueries({ queryKey: ["author"] });
+      qc.invalidateQueries({ queryKey: ["subscriptions"] });
+      qc.invalidateQueries({ queryKey: ["favorites"] });
+      qc.invalidateQueries({ queryKey: ["search"] });
+      qc.invalidateQueries({ queryKey: ["video"] });
     },
   });
 }
@@ -269,6 +336,7 @@ export function useCheckAuthor() {
       ),
     onSuccess: (_d, { username }) => {
       qc.invalidateQueries({ queryKey: ["author", username] });
+      qc.invalidateQueries({ queryKey: ["client-feed"] });
       qc.invalidateQueries({ queryKey: ["feed"] });
       qc.invalidateQueries({ queryKey: ["subscriptions"] });
     },
@@ -283,7 +351,9 @@ export function useMarkAllSeen() {
         `/api/tiktok/authors/${encodeURIComponent(username)}/mark-seen`,
       ),
     onSuccess: (_d, username) => {
+      qc.invalidateQueries({ queryKey: ["video"] });
       qc.invalidateQueries({ queryKey: ["author", username] });
+      qc.invalidateQueries({ queryKey: ["client-feed"] });
       qc.invalidateQueries({ queryKey: ["feed"] });
       qc.invalidateQueries({ queryKey: ["subscriptions"] });
     },
@@ -300,7 +370,9 @@ export interface AppSettings {
   autoMarkSeen: string;
 }
 export function useSettings() {
+  const enabled = useView((s) => s.modeReady && s.dataMode === "local");
   return useQuery({
+    enabled,
     queryKey: ["settings"],
     queryFn: () =>
       api.get<{ settings: AppSettings; envProxy: string | null; demoMode: boolean }>("/api/tiktok/settings"),

@@ -1,15 +1,6 @@
-# libcut — docker compose deployment.
-#
-# Quick start:
-#   1. Edit .env  →  set DEMO_MODE=false and TIKTOK_PROXY=socks5://user:pass@host:port
-#   2. docker compose up -d --build
-#   3. Open http://localhost:3000
-#
-# Variables below use ${VAR:-default} substitution. Docker Compose reads
-# `.env` automatically for substitution, so anything you put in `.env`
-# overrides the defaults shown here. The `env_file: .env` entry also passes
-# every var from `.env` straight into the container (vars in `environment:`
-# below take precedence over those from env_file).
+# Copy .env.example to .env, review its settings, then run:
+#   docker compose up -d --build
+# The default bind is loopback. Set LIBCUT_BIND only for a trusted network.
 
 services:
   libcut:
@@ -18,25 +9,38 @@ services:
       dockerfile: Dockerfile
     image: libcut:latest
     container_name: libcut
+    init: true
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
-      - "3000:3000"
+      - "${LIBCUT_BIND:-127.0.0.1}:3000:3000"
     volumes:
       - libcut-db:/app/db
       - libcut-cache:/app/cache/videos
     env_file:
       - .env
     environment:
-      # --- Overridable via .env ---
-      DEMO_MODE: ${DEMO_MODE:-false}
+      DEMO_MODE: ${DEMO_MODE:-true}
       TIKTOK_PROXY: ${TIKTOK_PROXY:-}
       TIKTOK_CACHE_TTL_MIN: ${TIKTOK_CACHE_TTL_MIN:-10}
       TIKTOK_SOCKET_TIMEOUT: ${TIKTOK_SOCKET_TIMEOUT:-30}
       TIKTOK_RETRIES: ${TIKTOK_RETRIES:-3}
       DATA_MODE: ${DATA_MODE:-local}
-      # --- Hardcoded for the container layout (do not override via .env) ---
       DATABASE_URL: file:/app/db/custom.db
       TIKTOK_CACHE_DIR: /app/cache/videos
       NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/tiktok/status').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     restart: unless-stopped
 
 volumes:

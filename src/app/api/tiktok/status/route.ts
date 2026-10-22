@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { json } from "@/lib/tiktok/http";
+import { json, errorJson } from "@/lib/tiktok/http";
 import { ensureInitialized } from "@/lib/tiktok/init";
 import { tiktokConfig, getEffectiveProxy } from "@/lib/tiktok/config";
 
@@ -7,7 +7,8 @@ export const dynamic = "force-dynamic";
 
 /** GET /api/tiktok/status — app config + triggers init. */
 export async function GET(_req: NextRequest) {
-  await ensureInitialized();
+  try { await ensureInitialized(); }
+  catch { return errorJson("Database or cache is not ready. Check server configuration and database setup.", 503); }
   const proxy = await getEffectiveProxy();
   return json({
     demoMode: tiktokConfig.demoMode,

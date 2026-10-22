@@ -3,7 +3,9 @@
  * caching via the provider.
  */
 
+import { randomUUID } from "node:crypto";
 import { promises as fs } from "fs";
+import { Readable } from "node:stream";
 import type { NextRequest } from "next/server";
 import { tiktokConfig } from "./config";
 import { tiktokProvider } from "./index";
@@ -12,133 +14,150 @@ import { TikTokError } from "./types";
 
 type Video = { id: string; url: string; cachedPath: string | null };
 
+const pendingDownloads = new Map<string, Promise<string | null>>();
+
 /**
- * Make sure a local playable file exists for the video.
- * - Real mode: download via provider into the cache (if not already cached).
- * - Demo mode: returns null (caller should redirect to the remote streamUrl).
- * Returns the absolute file path, or null if no local file is available.
+ * Make sure a local playable file exists for the video. Concurrent requests
+ * for the same video share one download, which is important for video clients
+ * that issue parallel range requests when playback starts.
  */
 export async function ensureLocalFile(video: Video): Promise<string | null> {
-  // Already cached?
   if (video.cachedPath) {
     try {
-      await fs.access(video.cachedPath);
-      return video.cachedPath;
+      const stat = await fs.stat(video.cachedPath);
+      if (stat.isFile() && stat.size > 0) return video.cachedPath;
     } catch {
-      // fall through and re-download
+      // The cache entry can outlive its file; download it again below.
     }
   }
-  if (tiktokConfig.demoMode) {
-    return null; // demo uses remote sample URLs
-  }
-  const dest = cachePathFor(video.id, "mp4");
+  if (tiktokConfig.demoMode) return null;
+
+  const existing = pendingDownloads.get(video.id);
+  if (existing) return existing;
+
+  const download = (async () => {
+    const dest = cachePathFor(video.id, "mp4");
+    const temporary = `${dest}.${randomUUID()}.mp4`;
+    try {
+      await tiktokProvider.downloadVideo(video.url, temporary);
+      const stat = await fs.stat(temporary);
+      if (!stat.isFile() || stat.size === 0) throw new Error("Video download is empty");
+      await fs.rename(temporary, dest);
+      try { await markCached(video.id, dest); }
+      catch (error) { await fs.unlink(dest).catch(() => {}); throw error; }
+      return dest;
+    } catch (e) {
+      await fs.unlink(temporary).catch(() => {});
+      if (e instanceof TikTokError) throw e;
+      throw new TikTokError(`download failed: ${(e as Error).message}`, "network");
+    }
+  })();
+  pendingDownloads.set(video.id, download);
   try {
-    await tiktokProvider.downloadVideo(video.url, dest);
-  } catch (e) {
-    if (e instanceof TikTokError) throw e;
-    throw new TikTokError(`download failed: ${(e as Error).message}`, "network");
+    return await download;
+  } finally {
+    if (pendingDownloads.get(video.id) === download) pendingDownloads.delete(video.id);
   }
-  await markCached(video.id, dest);
-  return dest;
 }
 
 /** Stat a file safely. */
 async function fileSize(p: string): Promise<number> {
-  try {
-    const s = await fs.stat(p);
-    return s.size;
-  } catch {
-    return 0;
+  const s = await fs.stat(p);
+  return s.size;
+}
+
+function contentDisposition(filename: string): string {
+  const safe = filename.replace(/[\r\n"\\]/g, "_");
+  const fallback = safe.replace(/[^\x20-\x7e]/g, "_");
+  const encoded = encodeURIComponent(safe).replace(/[!'()*]/g, (char) =>
+    `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`;
+}
+
+function rangeNotSatisfiable(size: number, headers: Record<string, string>): Response {
+  return new Response(null, {
+    status: 416,
+    headers: { ...headers, "Content-Range": `bytes */${size}`, "Content-Length": "0" },
+  });
+}
+
+/** Parse one byte range, including the suffix form `bytes=-N`. */
+function parseRange(value: string, size: number): { start: number; end: number } | null {
+  const match = /^bytes=(\d*)-(\d*)$/i.exec(value.trim());
+  if (!match || (!match[1] && !match[2]) || size <= 0) return null;
+
+  const first = match[1] ? Number(match[1]) : null;
+  const last = match[2] ? Number(match[2]) : null;
+  if ((first !== null && !Number.isSafeInteger(first)) || (last !== null && !Number.isSafeInteger(last))) {
+    return null;
   }
+
+  if (first === null) {
+    if (last === null || last <= 0) return null;
+    return { start: Math.max(0, size - last), end: size - 1 };
+  }
+  if (first >= size || (last !== null && last < first)) return null;
+  return { start: first, end: Math.min(last ?? size - 1, size - 1) };
+}
+
+async function streamFile(
+  filePath: string,
+  start?: number,
+  end?: number,
+): Promise<ReadableStream<Uint8Array>> {
+  const handle = await fs.open(filePath, "r");
+  const nodeStream = handle.createReadStream({
+    ...(start === undefined ? {} : { start }),
+    ...(end === undefined ? {} : { end }),
+    autoClose: true,
+  });
+  return Readable.toWeb(nodeStream) as unknown as ReadableStream<Uint8Array>;
 }
 
 /**
  * Stream a local file with HTTP Range support (so the <video> element can
- * seek). Returns a Next.js Response.
+ * seek). Invalid and unsatisfiable single ranges return 416.
  */
 export async function streamLocalFile(
   filePath: string,
   req: NextRequest,
   opts: { asAttachment?: boolean; filename?: string; mime?: string } = {},
 ): Promise<Response> {
-  const size = await fileSize(filePath);
-  const mime = opts.mime || "video/mp4";
-  const rangeHeader = req.headers.get("range");
+  let size: number;
+  try {
+    size = await fileSize(filePath);
+  } catch {
+    return new Response(null, { status: 404 });
+  }
 
   const baseHeaders: Record<string, string> = {
-    "Content-Type": mime,
+    "Content-Type": opts.mime || "video/mp4",
     "Cache-Control": "private, no-store",
+    "Accept-Ranges": "bytes",
   };
   if (opts.asAttachment && opts.filename) {
-    baseHeaders["Content-Disposition"] = `attachment; filename="${opts.filename.replace(/"/g, "_")}"`;
+    baseHeaders["Content-Disposition"] = contentDisposition(opts.filename);
   }
 
-  if (rangeHeader) {
-    const m = /bytes=(\d*)-(\d*)/.exec(rangeHeader);
-    if (m) {
-      const start = m[1] ? parseInt(m[1], 10) : 0;
-      const end = m[2] ? parseInt(m[2], 10) : size - 1;
-      const clampedEnd = Math.min(end, size - 1);
-      const chunkSize = clampedEnd - start + 1;
-      const fileHandle = await fs.open(filePath, "r");
-      const stream = fileHandle.createReadStream({ start, end: clampedEnd });
-      // Convert Node stream to Web ReadableStream.
-      const webStream = new ReadableStream({
-        start(controller) {
-          stream.on("data", (d: Buffer) => controller.enqueue(new Uint8Array(d)));
-          stream.on("end", () => {
-            controller.close();
-            fileHandle.close().catch(() => {});
-          });
-          stream.on("error", (err) => {
-            controller.error(err);
-            fileHandle.close().catch(() => {});
-          });
-        },
-        cancel() {
-          stream.destroy();
-          fileHandle.close().catch(() => {});
-        },
-      });
-      return new Response(webStream, {
-        status: 206,
-        headers: {
-          ...baseHeaders,
-          "Content-Range": `bytes ${start}-${clampedEnd}/${size}`,
-          "Accept-Ranges": "bytes",
-          "Content-Length": String(chunkSize),
-        },
-      });
-    }
+  const rangeHeader = req.headers.get("range");
+  if (rangeHeader !== null) {
+    const range = parseRange(rangeHeader, size);
+    if (!range) return rangeNotSatisfiable(size, baseHeaders);
+    const length = range.end - range.start + 1;
+    return new Response(await streamFile(filePath, range.start, range.end), {
+      status: 206,
+      headers: {
+        ...baseHeaders,
+        "Content-Range": `bytes ${range.start}-${range.end}/${size}`,
+        "Content-Length": String(length),
+      },
+    });
   }
 
-  // Full file.
-  const fileHandle = await fs.open(filePath, "r");
-  const stream = fileHandle.createReadStream();
-  const webStream = new ReadableStream({
-    start(controller) {
-      stream.on("data", (d: Buffer) => controller.enqueue(new Uint8Array(d)));
-      stream.on("end", () => {
-        controller.close();
-        fileHandle.close().catch(() => {});
-      });
-      stream.on("error", (err) => {
-        controller.error(err);
-        fileHandle.close().catch(() => {});
-      });
-    },
-    cancel() {
-      stream.destroy();
-      fileHandle.close().catch(() => {});
-    },
-  });
-  return new Response(webStream, {
+  return new Response(await streamFile(filePath), {
     status: 200,
-    headers: {
-      ...baseHeaders,
-      "Accept-Ranges": "bytes",
-      "Content-Length": String(size),
-    },
+    headers: { ...baseHeaders, "Content-Length": String(size) },
   });
 }
 
@@ -148,12 +167,13 @@ export function downloadFilename(video: {
   tiktokId: string;
   author?: { username: string } | null;
 }): string {
-  const authorPart = video.author?.username ?? "tiktok";
+  const authorPart = (video.author?.username ?? "tiktok").replace(/[^a-z0-9._-]/gi, "_");
   const titlePart = (video.title ?? video.tiktokId)
     .toLowerCase()
     .replace(/[^a-z0-9\u0400-\u04FF\u00C0-\u024F\s-]/gi, "")
     .trim()
     .replace(/\s+/g, "-")
     .slice(0, 60);
-  return `${authorPart}-${titlePart || video.tiktokId}.mp4`;
+  const idPart = video.tiktokId.replace(/[^a-z0-9_-]/gi, "_");
+  return `${authorPart}-${titlePart || idPart || "video"}.mp4`;
 }

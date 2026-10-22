@@ -1,3 +1,4 @@
+import { requireLocalMode } from "@/lib/tiktok/access";
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { json, errorJson } from "@/lib/tiktok/http";
@@ -10,6 +11,8 @@ export const dynamic = "force-dynamic";
  * Unsubscribe (soft): keep videos/favorites, mark author as not subscribed.
  */
 export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const denied = requireLocalMode(_req);
+  if (denied) return denied;
   await ensureInitialized();
   const { id } = await ctx.params;
   const author = await db.author.findUnique({ where: { id } });

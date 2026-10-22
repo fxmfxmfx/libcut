@@ -36,7 +36,7 @@ export const tiktokConfig: TikTokConfig = {
   ytdlpPath: process.env.YTDLP_PATH || "yt-dlp",
   socketTimeout: envInt("TIKTOK_SOCKET_TIMEOUT", 30),
   retries: envInt("TIKTOK_RETRIES", 3),
-  cacheDir: process.env.TIKTOK_CACHE_DIR || "/home/z/my-project/cache/videos",
+  cacheDir: process.env.TIKTOK_CACHE_DIR || `${process.cwd()}/cache/videos`,
   cacheTtlMs: envInt("TIKTOK_CACHE_TTL_MIN", 10) * 60 * 1000,
   demoMode: envBool("DEMO_MODE", true),
   userAgent:
@@ -52,6 +52,7 @@ export const tiktokConfig: TikTokConfig = {
  * Returns null when proxy is disabled or no proxy is configured.
  */
 export async function getEffectiveProxy(): Promise<string | null> {
+  if (tiktokConfig.dataMode === "client") return tiktokConfig.defaultProxy;
   // Lazy import to avoid circular deps at module load.
   const { db } = await import("@/lib/db");
   try {
@@ -76,7 +77,6 @@ export function ytdlpCommonArgs(proxy: string | null): string[] {
   const args: string[] = [
     "--no-playlist-reverse",
     "--no-warnings",
-    "--no-check-certificate",
     `--socket-timeout=${tiktokConfig.socketTimeout}`,
     `--retries=${tiktokConfig.retries}`,
     `--user-agent=${tiktokConfig.userAgent}`,

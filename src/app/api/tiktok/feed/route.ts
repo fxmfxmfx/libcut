@@ -1,7 +1,9 @@
+import { requireLocalMode } from "@/lib/tiktok/access";
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
-import { json } from "@/lib/tiktok/http";
+import { json, boundedInt } from "@/lib/tiktok/http";
 import { ensureInitialized } from "@/lib/tiktok/init";
+import { serializeVideo } from "@/lib/tiktok/library";
 import { proxyImage } from "@/lib/tiktok/images";
 
 export const dynamic = "force-dynamic";
@@ -12,8 +14,10 @@ export const dynamic = "force-dynamic";
  * Query: ?limit= (default 50)
  */
 export async function GET(req: NextRequest) {
+  const denied = requireLocalMode();
+  if (denied) return denied;
   await ensureInitialized();
-  const limit = Math.min(Number(req.nextUrl.searchParams.get("limit") ?? 50) || 50, 200);
+  const limit = boundedInt(req.nextUrl.searchParams.get("limit"), 50, 1, 200);
   const videos = await db.video.findMany({
     where: { seen: false, author: { subscribed: true } },
     orderBy: { publishedAt: "desc" },
@@ -22,21 +26,7 @@ export async function GET(req: NextRequest) {
   });
   return json({
     videos: videos.map((v) => ({
-      id: v.id,
-      tiktokId: v.tiktokId,
-      url: v.url,
-      title: v.title,
-      description: v.description,
-      thumbnailUrl: proxyImage(v.thumbnailUrl),
-      duration: v.duration,
-      viewCount: v.viewCount,
-      likeCount: v.likeCount,
-      commentCount: v.commentCount,
-      shareCount: v.shareCount,
-      publishedAt: v.publishedAt,
-      seen: v.seen,
-      isGallery: v.isGallery,
-      images: v.images ? (JSON.parse(v.images) as string[]).map(proxyImage) : null,
+      ...serializeVideo(v),
       author: {
         id: v.author.id,
         username: v.author.username,

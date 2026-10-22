@@ -34,6 +34,7 @@ export function SubscribeDialog({
   children?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const [clientPending, setClientPending] = useState(false);
   const [inputUsername, setInputUsername] = useState("");
   const subscribe = useSubscribe();
   const { openAuthor, t } = useView();
@@ -45,10 +46,11 @@ export function SubscribeDialog({
 
   async function handleSubscribe() {
     const u = targetUsername.trim().replace(/^@/, "");
-    if (!u) return;
+    if (!u || clientPending || subscribe.isPending) return;
 
     // Client mode: fetch profile via API (stateless), store in localStorage
     if (dataMode === "client") {
+      setClientPending(true);
       try {
         const r = await fetch(`/api/tiktok/authors/${encodeURIComponent(u)}`);
         if (!r.ok) {
@@ -77,7 +79,7 @@ export function SubscribeDialog({
           title: t("sub.dialog.fail"),
           description: e?.message ?? t("sub.dialog.fail.desc"),
         });
-      }
+      } finally { setClientPending(false); }
       return;
     }
 
@@ -104,8 +106,8 @@ export function SubscribeDialog({
   // Wire onClick into the children button (or render a default button).
   if (username) {
     const btn = children ?? (
-      <Button size="sm" className="gap-2" disabled={subscribe.isPending}>
-        {subscribe.isPending ? <Loader2 className="size-4 animate-spin" /> : <UserPlus className="size-4" />}
+      <Button size="sm" className="gap-2" disabled={(subscribe.isPending || clientPending)}>
+        {(subscribe.isPending || clientPending) ? <Loader2 className="size-4 animate-spin" /> : <UserPlus className="size-4" />}
         {t("subs.subscribe")}
       </Button>
     );
@@ -148,8 +150,8 @@ export function SubscribeDialog({
           <Button variant="outline" onClick={() => setOpen(false)}>
             {t("sub.dialog.cancel")}
           </Button>
-          <Button onClick={handleSubscribe} disabled={subscribe.isPending || !inputUsername.trim()} className="gap-2">
-            {subscribe.isPending ? <Loader2 className="size-4 animate-spin" /> : <UserPlus className="size-4" />}
+          <Button onClick={handleSubscribe} disabled={(subscribe.isPending || clientPending) || !inputUsername.trim()} className="gap-2">
+            {(subscribe.isPending || clientPending) ? <Loader2 className="size-4 animate-spin" /> : <UserPlus className="size-4" />}
             {t("sub.dialog.ok")}
           </Button>
         </DialogFooter>

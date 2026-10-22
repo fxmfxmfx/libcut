@@ -8,6 +8,8 @@ import { useView } from "@/lib/tiktok/store";
  * the document. Mounted once in the root layout.
  */
 export function AppearanceApplier() {
+  const lang = useView((s) => s.lang);
+  useEffect(() => { document.documentElement.lang = lang; }, [lang]);
   const theme = useView((s) => s.theme);
   const accent = useView((s) => s.accent);
   const customCss = useView((s) => s.customCss);

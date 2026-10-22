@@ -10,6 +10,8 @@
  * subscriptions, feed and favorites tabs work immediately.
  */
 
+import path from "node:path";
+
 import {
   type AuthorProfile,
   type AuthorVideo,
@@ -32,9 +34,8 @@ const SAMPLE_VIDEOS = [
 
 /** Absolute filesystem path for a local demo sample URL (used by stream/download). */
 export function demoLocalPathForUrl(sampleUrl: string): string {
-  // Resolve relative to the project root (works in dev + Docker).
-  const base = process.env.TIKTOK_CACHE_DIR?.replace("/cache/videos", "") || process.cwd();
-  return `${base}/public${sampleUrl}`;
+  if (!/^\/demo-videos\/v[0-5]\.mp4$/.test(sampleUrl)) throw new Error("Invalid demo sample URL");
+  return path.join(process.cwd(), "public", sampleUrl.slice(1));
 }
 
 function thumb(seed: string, color = "#fe2c55"): string {

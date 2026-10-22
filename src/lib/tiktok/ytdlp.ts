@@ -22,40 +22,104 @@ import {
 } from "./types";
 import { scrapeAuthorProfile, scrapeVideoMeta, scrapeSearch } from "./scraper";
 
+const MAX_YTDLP_CONCURRENT = 3;
+const MAX_YTDLP_QUEUE = 100;
+const MAX_STDOUT_BYTES = 16 * 1024 * 1024;
+const MAX_STDERR_BYTES = 64 * 1024;
+let activeYtdlpProcesses = 0;
+const ytdlpQueue: Array<() => void> = [];
+
+function releaseSlot(): () => void {
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const next = ytdlpQueue.shift();
+    if (next) next();
+    else activeYtdlpProcesses--;
+  };
+}
+
+function acquireSlot(): Promise<() => void> {
+  if (activeYtdlpProcesses < MAX_YTDLP_CONCURRENT) {
+    activeYtdlpProcesses++;
+    return Promise.resolve(releaseSlot());
+  }
+  if (ytdlpQueue.length >= MAX_YTDLP_QUEUE) {
+    return Promise.reject(new TikTokError("yt-dlp is busy; try again shortly", "network"));
+  }
+  return new Promise((resolve) => ytdlpQueue.push(() => resolve(releaseSlot())));
+}
+
+function redactProxySecrets(message: string, proxy: string | null): string {
+  const withoutConfiguredProxy = proxy ? message.split(proxy).join("[configured proxy]") : message;
+  return withoutConfiguredProxy.replace(/((?:socks5h?|https?):\/\/)[^/\s]*@/gi, "$1[redacted]@");
+}
+
 /** Run yt-dlp with the given args and return its stdout as a string. */
 async function runYtDlp(args: string[], opts: { timeoutMs?: number } = {}): Promise<string> {
-  const proxy = await getEffectiveProxy();
-  const fullArgs = [...ytdlpCommonArgs(proxy), ...args];
-  return new Promise((resolve, reject) => {
-    const child = spawn(tiktokConfig.ytdlpPath, fullArgs, {
-      env: { ...process.env },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+  const release = await acquireSlot();
+  try {
+    const proxy = await getEffectiveProxy();
+    const fullArgs = [...ytdlpCommonArgs(proxy), ...args];
+    return await new Promise((resolve, reject) => {
+      const child = spawn(tiktokConfig.ytdlpPath, fullArgs, {
+        env: { ...process.env },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
 
-    let stdout = "";
-    let stderr = "";
-    const timer = setTimeout(
-      () => {
+      const stdoutChunks: Buffer[] = [];
+      const stderrChunks: Buffer[] = [];
+      let stdoutBytes = 0;
+      let stderrBytes = 0;
+      let failure: TikTokError | null = null;
+      let settled = false;
+      const timer = setTimeout(() => {
+        failure = new TikTokError("yt-dlp timed out", "network");
         child.kill("SIGKILL");
-        reject(new TikTokError("yt-dlp timed out", "network"));
-      },
-      opts.timeoutMs ?? 90_000,
-    );
+      }, opts.timeoutMs ?? 90_000);
 
-    child.stdout.on("data", (d) => (stdout += d.toString()));
-    child.stderr.on("data", (d) => (stderr += d.toString()));
+      child.stdout.on("data", (chunk: Buffer | string) => {
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        stdoutBytes += buffer.length;
+        if (stdoutBytes > MAX_STDOUT_BYTES) {
+          failure ??= new TikTokError("yt-dlp output exceeded the 16 MB limit", "unknown");
+          child.kill("SIGKILL");
+          return;
+        }
+        if (!failure) stdoutChunks.push(buffer);
+      });
+      child.stderr.on("data", (chunk: Buffer | string) => {
+        if (stderrBytes >= MAX_STDERR_BYTES) return;
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        const remaining = MAX_STDERR_BYTES - stderrBytes;
+        const retained = buffer.length > remaining ? buffer.subarray(0, remaining) : buffer;
+        stderrChunks.push(retained);
+        stderrBytes += retained.length;
+      });
 
-    child.on("error", (err) => {
-      clearTimeout(timer);
-      reject(new TikTokError(`Failed to start yt-dlp: ${err.message}`, "unknown"));
-    });
+      child.on("error", (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(new TikTokError(`Failed to start yt-dlp: ${redactProxySecrets(error.message, proxy)}`, "unknown"));
+      });
 
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      if (code === 0) {
-        resolve(stdout);
-      } else {
-        const msg = stderr.trim() || `yt-dlp exited with code ${code}`;
+      child.on("close", (code) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (failure) {
+          reject(failure);
+          return;
+        }
+        if (code === 0) {
+          resolve(Buffer.concat(stdoutChunks, stdoutBytes).toString("utf8"));
+          return;
+        }
+        const rawMessage = Buffer.concat(stderrChunks, stderrBytes).toString("utf8").trim() ||
+          `yt-dlp exited with code ${code}`;
+        const msg = redactProxySecrets(rawMessage, proxy);
         const lower = msg.toLowerCase();
         let code2: TikTokError["code"] = "unknown";
         if (lower.includes("http error 404") || lower.includes("does not exist") || lower.includes("unable to find")) {
@@ -66,9 +130,11 @@ async function runYtDlp(args: string[], opts: { timeoutMs?: number } = {}): Prom
           code2 = "network";
         }
         reject(new TikTokError(msg, code2));
-      }
+      });
     });
-  });
+  } finally {
+    release();
+  }
 }
 
 /** Run yt-dlp and parse its stdout as JSON. */
@@ -170,12 +236,8 @@ function pickImages(entry: any): { isGallery: boolean; images: string[] } {
     .filter((u: any) => typeof u === "string" && u.length > 0);
   if (imgs.length > 0) return { isGallery: true, images: imgs };
 
-  // TikTok photo posts in flat-playlist have duration === 0 (no video stream).
-  // Mark as gallery so the UI shows the image icon; full image URLs are fetched
-  // on demand when the player opens (via scrapeVideoMeta).
-  if (parseNumber(entry?.duration) === 0) {
-    return { isGallery: true, images: [] };
-  }
+  // Unknown duration in a flat playlist is not proof of a photo post.
+  if (entry?._type === "images" || /\/photo\/\d+/.test(String(entry?.webpage_url ?? entry?.url ?? ""))) return { isGallery: true, images: [] };
   return { isGallery: false, images: [] };
 }
 
@@ -225,7 +287,7 @@ export class YtDlpProvider implements TikTokProvider {
     }
 
     // Fallback: yt-dlp flat-playlist + first-video extraction for display name.
-    // If yt-dlp ALSO fails, return a minimal profile so subscribe doesn't crash.
+    // Return only a profile whose handle yt-dlp actually confirms.
     try {
       const url = authorUrl(username);
       const data = await runYtDlpJson([
@@ -236,7 +298,13 @@ export class YtDlpProvider implements TikTokProvider {
         url,
       ]);
 
-      const handle = pickUsername(data, username.replace(/^@/, ""));
+      const handle = String(data.uploader ?? "").replace(/^@/, "");
+      if (
+        !/^[a-z0-9._]{1,24}$/i.test(handle) ||
+        handle.toLowerCase() !== username.replace(/^@/, "").toLowerCase()
+      ) {
+        throw new Error("yt-dlp did not confirm an author handle");
+      }
       let displayName = pickDisplayName(data);
       let avatar = pickAvatar(data);
       let followerCount =
@@ -298,11 +366,8 @@ export class YtDlpProvider implements TikTokProvider {
       return entries
         .filter((e) => e && (e.id || e.url))
         .map((e) => mapEntry(e, base));
-    } catch {
-      // yt-dlp failed (e.g. "Unable to extract secondary user ID") — return
-      // empty array instead of crashing. The profile page can still be opened;
-      // videos will appear after the user clicks "Check for new".
-      return [];
+    } catch (error) {
+      throw error instanceof TikTokError ? error : new TikTokError("Could not load videos. Check the server proxy.", "network");
     }
   }
 
@@ -313,26 +378,9 @@ export class YtDlpProvider implements TikTokProvider {
     let meta: VideoMeta | null = null;
     try {
       const scraped = await scrapeVideoMeta(videoUrl);
-      if (scraped) {
-        // Get a streamable URL from yt-dlp (scraper doesn't extract formats).
-        // Prefer h264 (browser-playable) over h265/bytevc1 (not supported).
-        let streamUrl: string | null = null;
-        try {
-          const data = await runYtDlpJson(["-J", "--no-playlist", videoUrl]);
-          const formats: any[] = data.formats ?? [];
-          const isH264 = (f: any) => {
-            const vc = String(f.vcodec ?? "").toLowerCase();
-            return vc.startsWith("h264") || vc.startsWith("avc1");
-          };
-          const progressive = (f: any) => f.vcodec !== "none" && f.acodec !== "none" && f.url;
-          const h264 = formats.find((f) => progressive(f) && isH264(f));
-          const anyProg = formats.find((f) => progressive(f));
-          if (h264?.url) streamUrl = h264.url;
-          else if (anyProg?.url) streamUrl = anyProg.url;
-          else if (data.url) streamUrl = data.url;
-        } catch {
-          // yt-dlp may fail; scraper still gives us metadata
-        }
+      if (scraped?.tiktokId && scraped.authorUsername) {
+        // Playback downloads through /stream; metadata does not need a second
+        // yt-dlp process just to discover a short-lived CDN stream URL.
         meta = {
           tiktokId: scraped.tiktokId || "",
           url: videoUrl,
@@ -340,8 +388,8 @@ export class YtDlpProvider implements TikTokProvider {
           description: scraped.description ?? null,
           thumbnailUrl: scraped.thumbnailUrl ?? null,
           duration: scraped.duration ?? 0,
-          width: 0,
-          height: 0,
+          width: scraped.width ?? 0,
+          height: scraped.height ?? 0,
           viewCount: scraped.viewCount ?? 0,
           likeCount: scraped.likeCount ?? 0,
           commentCount: scraped.commentCount ?? 0,
@@ -352,7 +400,7 @@ export class YtDlpProvider implements TikTokProvider {
           authorUsername: scraped.authorUsername ?? "",
           authorDisplayName: scraped.authorDisplayName ?? null,
           authorAvatarUrl: scraped.authorAvatarUrl ?? null,
-          streamUrl,
+          streamUrl: null,
         };
       }
     } catch {
@@ -428,14 +476,17 @@ export class YtDlpProvider implements TikTokProvider {
     const wantAuthor = kind === "all" || kind === "author";
     const wantVideo = kind === "all" || kind === "video";
     const seenAuthors = new Set<string>();
+    let searchFailure: unknown = null;
 
-    // 1) Try treating the query as a handle (works even with partial / no proxy).
+    // 1) A syntactically valid exact handle gets a profile scrape. Do not use
+    // getAuthorProfile here: its yt-dlp fallback can mistake an unverified
+    // search string for an author.
     if (wantAuthor) {
-      const handle = query.replace(/^@/, "").trim();
-      if (handle) {
+      const handle = query.trim().replace(/^@/, "");
+      if (/^[a-z0-9._]{1,24}$/i.test(handle)) {
         try {
-          const profile = await this.getAuthorProfile(handle);
-          if (!seenAuthors.has(profile.username)) {
+          const profile = await scrapeAuthorProfile(handle);
+          if (profile && profile.username.toLowerCase() === handle.toLowerCase() && !seenAuthors.has(profile.username)) {
             seenAuthors.add(profile.username);
             results.push({
               kind: "author",
@@ -446,8 +497,8 @@ export class YtDlpProvider implements TikTokProvider {
               followerCount: profile.followerCount,
             });
           }
-        } catch {
-          // not a valid handle; ignore
+        } catch (error) {
+          searchFailure ??= error;
         }
       }
     }
@@ -490,35 +541,16 @@ export class YtDlpProvider implements TikTokProvider {
           });
         }
       }
-    } catch {
-      // scrape search failed; keep partial results
+    } catch (error) {
+      searchFailure ??= error;
     }
 
-    // 3) Fallback: yt-dlp search (may fail, but try).
-    try {
-      if (wantVideo) {
-        const data = await runYtDlpJson([
-          "-J",
-          "--flat-playlist",
-          "--playlist-end",
-          "24",
-          `https://www.tiktok.com/search?q=${encodeURIComponent(query)}`,
-        ]);
-        const authorField = (e: any) => pickUsername(e, "");
-        for (const e of data.entries ?? []) {
-          if (!e || !(e.id || e.url)) continue;
-          results.push({
-            kind: "video",
-            username: authorField(e),
-            video: {
-              ...mapEntry(e),
-              authorUsername: authorField(e),
-            },
-          });
-        }
-      }
-    } catch {
-      // search may fail; keep partial results
+    if (results.length === 0) {
+      const failureCode = searchFailure instanceof TikTokError ? searchFailure.code : "not_found";
+      const details = searchFailure instanceof Error
+        ? redactProxySecrets(searchFailure.message, await getEffectiveProxy())
+        : "No matching results were returned; TikTok may be blocking the search request or the proxy may be unavailable.";
+      throw new TikTokError(details, failureCode);
     }
 
     return results;

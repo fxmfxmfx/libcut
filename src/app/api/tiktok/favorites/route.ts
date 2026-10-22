@@ -1,3 +1,4 @@
+import { requireLocalMode } from "@/lib/tiktok/access";
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { json } from "@/lib/tiktok/http";
@@ -11,6 +12,8 @@ export const dynamic = "force-dynamic";
  * List the user's favorite videos (with author), newest-favorite first.
  */
 export async function GET() {
+  const denied = requireLocalMode();
+  if (denied) return denied;
   await ensureInitialized();
   const favs = await db.favorite.findMany({
     orderBy: { createdAt: "desc" },

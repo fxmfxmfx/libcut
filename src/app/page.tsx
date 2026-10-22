@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
+import { Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { TopBar } from "@/components/tiktok/top-bar";
 import { Sidebar } from "@/components/tiktok/sidebar";
 import { FeedView } from "@/components/tiktok/feed-view";
@@ -14,15 +16,8 @@ import { useView } from "@/lib/tiktok/store";
 import { useStatus } from "@/lib/tiktok/queries";
 
 export default function Home() {
-  const { activeTab, selectedAuthor, openVideoId } = useView();
+  const { activeTab, selectedAuthor, openVideoId, modeReady, preferencesReady, t } = useView();
   const status = useStatus();
-  // Kick off init + sync dataMode from env config.
-  useEffect(() => {
-    if (status.data?.dataMode) {
-      useView.getState().setDataMode(status.data.dataMode);
-    }
-  }, [status.data?.dataMode]);
-
   useEffect(() => {
     if (openVideoId) {
       const prev = document.body.style.overflow;
@@ -32,6 +27,15 @@ export default function Home() {
       };
     }
   }, [openVideoId]);
+
+  if (!modeReady || !preferencesReady) return (
+    <main className="grid min-h-dvh place-items-center bg-background p-6 text-foreground">
+      <div className="space-y-4 text-center" role="status">
+        {status.isError ? <><p>{status.error.message}</p><Button onClick={() => status.refetch()}>{t("common.retry")}</Button></>
+          : <><Loader2 className="mx-auto size-7 animate-spin text-primary" /><p>libcut 2.0</p></>}
+      </div>
+    </main>
+  );
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
@@ -44,7 +48,7 @@ export default function Home() {
           <main className="flex-1 px-4 pb-24 pt-5 md:px-6 md:pb-10">
             <div className="mx-auto w-full max-w-[1600px]">
               {selectedAuthor ? (
-                <AuthorProfile username={selectedAuthor} />
+                <AuthorProfile key={selectedAuthor} username={selectedAuthor} />
               ) : activeTab === "feed" ? (
                 <FeedView />
               ) : activeTab === "subscriptions" ? (
@@ -60,12 +64,12 @@ export default function Home() {
           </main>
 
           <footer className="mt-auto hidden border-t border-border/60 px-4 py-4 text-center text-xs text-muted-foreground md:block md:px-6">
-            libcut
+            libcut 2.0
           </footer>
         </div>
       </div>
 
-      {openVideoId && <VideoPlayer videoId={openVideoId} />}
+      {openVideoId && <VideoPlayer key={openVideoId} videoId={openVideoId} />}
     </div>
   );
 }

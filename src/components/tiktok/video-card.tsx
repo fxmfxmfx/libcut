@@ -21,22 +21,22 @@ export function VideoCard({ video, showAuthor = true, showSeen = false }: Props)
   const t = useView((s) => s.t);
   const lang = useView((s) => s.lang);
   const dataMode = useView((s) => s.dataMode);
-  const clientIsSeen = useClientData((s) => s.isSeen);
+  const clientSeen = useClientData((s) => s.seenVideoIds);
 
   const author = video.author;
   // In client mode, check localStorage; otherwise use the API's seen field.
-  const seen = dataMode === "client" ? clientIsSeen(video.id) : !!video.seen;
+  const seen = dataMode === "client" ? (clientSeen.includes(video.id) || clientSeen.includes(video.tiktokId)) : !!video.seen;
   const isGallery = !!video.isGallery;
 
   return (
     <Card
       role="button"
       tabIndex={0}
-      onClick={() => openVideo(video.id)}
+      onClick={() => openVideo(video.id, video)}
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
+        if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
           e.preventDefault();
-          openVideo(video.id);
+          openVideo(video.id, video);
         }
       }}
       className={cn(

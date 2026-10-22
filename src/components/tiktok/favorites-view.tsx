@@ -20,13 +20,15 @@ export function FavoritesView() {
         tiktokId: f.tiktokId,
         url: f.url,
         title: f.title,
-        description: null,
+        description: f.description ?? null,
         thumbnailUrl: f.thumbnailUrl,
         duration: f.duration,
-        viewCount: 0,
-        likeCount: 0,
-        commentCount: 0,
-        publishedAt: null as string | null,
+        viewCount: f.viewCount ?? 0,
+        likeCount: f.likeCount ?? 0,
+        commentCount: f.commentCount ?? 0,
+        publishedAt: f.publishedAt ?? null,
+        isGallery: f.isGallery,
+        images: f.images,
         favoritedAt: new Date(f.favoritedAt).toISOString(),
         author: {
           id: "",
@@ -48,6 +50,7 @@ export function FavoritesView() {
         </p>
       </div>
 
+      {favs.error && <div role="alert" className="rounded-lg border border-destructive/40 p-4 text-sm"><p>{favs.error.message}</p><Button size="sm" variant="outline" onClick={() => favs.refetch()}>{t("common.retry")}</Button></div>}
       {dataMode !== "client" && favs.isLoading ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
           {Array.from({ length: 6 }).map((_, i) => (

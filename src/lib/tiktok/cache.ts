@@ -18,16 +18,12 @@ let cleanupTimer: NodeJS.Timeout | null = null;
 
 /** Ensure the cache directory exists. */
 export async function ensureCacheDir(): Promise<void> {
-  try {
-    await fs.mkdir(tiktokConfig.cacheDir, { recursive: true });
-  } catch {
-    // ignore
-  }
+  await fs.mkdir(tiktokConfig.cacheDir, { recursive: true });
 }
 
 /** Build a safe file path for a cached video. */
 export function cachePathFor(videoId: string, ext = "mp4"): string {
-  return path.join(tiktokConfig.cacheDir, `${videoId}.${ext}`);
+  return path.join(/* turbopackIgnore: true */ tiktokConfig.cacheDir, `${videoId}.${ext}`);
 }
 
 /** Record that a video is now cached at the given path. */
@@ -78,7 +74,22 @@ export async function cleanupCacheOnce(): Promise<number> {
       data: { cachedPath: null, cachedAt: null },
     });
   }
-  return stale.length;
+  // Interrupted downloads or clearing the library can leave files with no DB
+  // row. Keep a grace period longer than the maximum download timeout.
+  const referenced = new Set((await db.video.findMany({
+    where: { cachedPath: { not: null } }, select: { cachedPath: true },
+  })).map((v) => v.cachedPath));
+  const orphanCutoff = Date.now() - Math.max(tiktokConfig.cacheTtlMs, 10 * 60_000);
+  let orphans = 0;
+  for (const entry of await fs.readdir(tiktokConfig.cacheDir, { withFileTypes: true })) {
+    if (!entry.isFile() || !/^[a-z0-9_-]+\.mp4(?:\.[a-f0-9-]+\.mp4)?$/i.test(entry.name)) continue;
+    const file = cachePathFor(entry.name.replace(/\.mp4$/, ""), "mp4");
+    if (referenced.has(file)) continue;
+    try {
+      if ((await fs.stat(file)).mtimeMs < orphanCutoff) { await fs.unlink(file); orphans++; }
+    } catch { /* a concurrent request or cleanup may already have removed it */ }
+  }
+  return stale.length + orphans;
 }
 
 /** Start the periodic cleanup loop (every 1 minute). Idempotent. */

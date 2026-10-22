@@ -1,513 +1,136 @@
-> English | [Русская версия](README.ru.md)
+> English | [Русский](README.ru.md)
 
-# libcut
+# libcut 2.0
 
-**A self-hosted, privacy-first TikTok viewer. No ads, no tracking, no account required.**
+A self-hosted TikTok viewer with subscriptions, an unwatched feed, favorites, comments, downloads, and photo galleries. No TikTok account is required. The interface supports English and Russian, six themes, accent colors, and custom CSS.
 
-libcut is the [redlib](https://github.com/redlib-org/redlib) / [libreddit](https://github.com/libreddit/libreddit) idea, but for TikTok. You run it on your own server, subscribe to creators by `@username`, and get a clean feed of new, unwatched videos — with comments, favorites, downloads, photo carousels, and full author profiles. All TikTok traffic is funneled through a SOCKS5 proxy and [`yt-dlp`](https://github.com/yt-dlp/yt-dlp); no third-party TikTok scripts or pixels ever execute in your browser.
+**Use libcut on your own machine or a trusted network. There is no login or authorization system.** Client mode isolates personal browser state, but does not make an instance a hardened public service. Respect copyright and TikTok's terms.
 
-> ⚠️ Intended for **personal** use. Respect copyright and TikTok's Terms of Service.
+## What's new in 2.0
 
-> ⚠️ Completely vibe-coded by GLM 5.2 on chat.z.ai
+- Client preferences and subscriptions survive reloads; watched and favorite state uses stable TikTok IDs.
+- Client feed refresh, manual watched toggles, JSON backup export/import, and storage error recovery.
+- Immediate search in your library alongside live TikTok search, exact `@handle` lookup, and full profile/video links. Search results open in the player.
+- Mobile video/comments switching, reachable comment scrolling, touch navigation for photo galleries, and playback retry controls.
+- Working attachment downloads, correct byte ranges, shared downloads, bounded upstream concurrency, and transactional comment refreshes.
+- Updated dependencies and reproducible checks for both storage modes.
 
-> ⚠️ Client mode (for public instances) works bad 
+See [CHANGELOG.md](CHANGELOG.md) and the [2.0 upgrade guide](docs/UPGRADING-2.0.md) before updating an existing installation.
 
-[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/yt-dlp/yt-dlp/pulls)
+## Run with Docker Compose
 
----
+Requires Docker and Compose. The image includes Node, Bun, Chromium, Python, ffmpeg, yt-dlp, and curl_cffi.
 
-## Screenshots
-
-<img width="1629" height="901" alt="image" src="https://github.com/user-attachments/assets/27c30a81-a9fd-4ad8-88e6-63c71661fbdf" />
-<img width="1611" height="876" alt="image" src="https://github.com/user-attachments/assets/f0ca2708-765a-41d9-9974-4007e53c9e4d" />
-<img width="1611" height="880" alt="image" src="https://github.com/user-attachments/assets/9ab0fee6-8f1f-4172-941f-e02d9b4a7375" />
-<img width="1617" height="880" alt="image" src="https://github.com/user-attachments/assets/3d691452-40d3-45fa-9661-b29c7fc8ba48" />
-
-
----
-
-## Features
-
-### Browsing
-- **Subscribe to creators** by `@username` — profile and recent videos are fetched via `yt-dlp` and stored locally.
-- **Feed of unseen videos** — shows only videos you haven't watched yet; auto-checks for new ones when you open the app.
-- **Author profiles** — avatar, channel display name, description, and full stats (followers, following, likes/heart count, video count) plus a grid of all stored videos.
-- **Search by handle** — search across your local library and TikTok directly; toggle between All / Authors / Videos.
-
-### Playback
-- **Video player** with native controls, auto-loop, and HTTP `Range`-seek support.
-- **Volume control** — always available, fades in on hover.
-- **Photo carousels (slides)** for TikTok image posts — swipe with arrows, dots, or the ←/→ keys.
-- **Comments** with author names, avatars, like counts, and timestamps — refreshable on demand.
-- **iOS-friendly muted autoplay** — the player starts muted and unmutes on the first tap, working around Safari's autoplay policy.
-
-### Library
-- **Favorites** — save videos to the local database for later.
-- **Download videos** to your computer in one click (streamed with HTTP `Range` support).
-- **Mark-as-watched** — individually per video, or "Mark all as watched" on an author profile.
-- **Load older videos** — paginate deeper into a creator's backlog via `yt-dlp`'s `--playlist-start`.
-
-### Privacy
-- **No TikTok account needed** — subscribe and browse anonymously.
-- **No tracking, no ads** — nothing from TikTok's frontend ever runs in your browser.
-- **SOCKS5 proxy for all TikTok access** — every request goes through your proxy at the `yt-dlp` layer.
-- **Server-side image proxy** — all avatars and thumbnails are re-served through `/api/tiktok/proxy-image` (TikTok's CDN blocks hotlinking).
-- **Temp video cache auto-cleaned every 10 min** (configurable via `TIKTOK_CACHE_TTL_MIN`) — DB metadata is kept, stale `.mp4` files are deleted.
-
-### Customization
-- **6 built-in themes**: Default (Rose), Gruvbox, Catppuccin Mocha, Nord, Dracula, Light.
-- **Custom accent color** picked from a palette (or any CSS value via custom CSS).
-- **Custom CSS injection** — paste arbitrary CSS that overrides every built-in style and theme.
-- **English / Russian UI** — toggle live without a rebuild.
-- All appearance settings are stored in the database, survive container restarts, and apply instantly.
-
-### Self-hosting
-- **Docker** deployment — a single `docker compose up -d --build`.
-- **SQLite** database via Prisma (no external DB to manage).
-- **`yt-dlp` + `curl_cffi`** for TikTok TLS impersonation (required — TikTok blocks naive clients).
-- **Headless Chromium** (`puppeteer-extra` + stealth plugin) for comment extraction (accepts GDPR consent, clicks the comment icon, captures the signed comment API response).
-- **Demo mode** — preview the UI with built-in sample data without ever touching TikTok.
-
----
-
-## Quick Start (Docker)
-
-This is the primary way to run libcut.
-
-### Prerequisites
-- **Docker** and **Docker Compose** v2 — verify with `docker --version` and `docker compose version`.
-- A working **SOCKS5 proxy** whose exit IP is in a region where TikTok is reachable.
-
-Everything else (`python3`, `ffmpeg`, `yt-dlp`, `curl_cffi`, `node`, `bun`, Chromium) is installed automatically inside the image.
-
-### Steps
-
-1. **Clone the repository:**
-
-   ```bash
-   git clone https://github.com/fxmfxmfx/libcut/
-   cd libcut
-   ```
-
-2. **Edit `.env`** in the project root — switch off demo mode and set your proxy:
-
-   ```dotenv
-   DEMO_MODE=false
-   TIKTOK_PROXY=socks5://user:pass@1.2.3.4:1080
-   ```
-
-3. **Build and start the container:**
-
-   ```bash
-   docker compose up -d --build
-   ```
-
-4. **Open** http://localhost:3000 in your browser.
-
-Check status:
-
-```bash
-docker compose ps
-docker compose logs -f libcut
-```
-
-Stop:
-
-```bash
-docker compose down
-```
-
-> ⚠️ **Build requirements:** the first build runs Turbopack (`next build`) **and** downloads Chromium for the comments service. Plan for **~2 GB of free RAM** and **~3 minutes** of build time. The final image size is **~1.5 GB** (mostly Chromium).
-
-> ℹ️ **DEMO_MODE default:** the shipped `.env` ships with `DEMO_MODE=true` so the UI is previewable in a sandbox. On your server you **must** flip it to `false` (and set `TIKTOK_PROXY`) or no real TikTok requests will be made.
-
-See [DOCKER.md](DOCKER.md) and [DOCKER.en.md](DOCKER.en.md) for the in-depth Docker guide.
-
----
-
-## Configuration
-
-All configuration is via environment variables, set in `.env` (auto-picked-up by Compose) or passed on the shell.
-
-| Variable | Default | Description |
-|---|---|---|
-| `DEMO_MODE` | `false` (Docker) / `true` (local dev) | `true` serves built-in demo data and never contacts TikTok. `false` makes real requests through `yt-dlp` + proxy. |
-| `TIKTOK_PROXY` | _(empty)_ | SOCKS5 proxy for `yt-dlp` and the HTML scraper. Format: `socks5://user:pass@host:port`. Can be overridden at runtime in Settings. |
-| `DATA_MODE` | `local` | Data storage mode: `local` = SQLite on server (default), `client` = browser localStorage (for public instances). See [Data Storage Modes](#data-storage-modes) below. |
-| `TIKTOK_CACHE_TTL_MIN` | `10` | Lifetime of the temp video cache, in minutes. After expiry the `.mp4` file is deleted (DB metadata is kept). |
-| `TIKTOK_SOCKET_TIMEOUT` | `30` | Per-attempt socket timeout for `yt-dlp`, in seconds. |
-| `TIKTOK_RETRIES` | `3` | Number of `yt-dlp` retries on network errors. |
-| `DATABASE_URL` | `file:/app/db/custom.db` | Path to the SQLite database file (inside the container). |
-| `TIKTOK_CACHE_DIR` | `/app/cache/videos` | Directory for the temp video cache (inside the container). |
-| `NODE_ENV` | `production` | Node.js mode. |
-| `YTDLP_PATH` | `yt-dlp` | Path to the `yt-dlp` binary (override if installed in a non-standard location). |
-| `TIKTOK_UA` | Chrome 124 User-Agent | User-Agent string sent by `yt-dlp` and the HTML scraper. |
-
-> 💡 **Runtime settings:** the **proxy, language, theme, accent color, custom CSS, and auto-mark-watched behavior** are also stored in the database and editable in the **Settings** panel — they apply immediately, no rebuild needed, and survive a container restart. The DB value takes precedence over the env var (except for `DEMO_MODE`, which is env-only).
-
----
-
-## Data Storage Modes
-
-libcut supports two data storage modes, controlled by the `DATA_MODE` environment variable:
-
-### Server mode (`DATA_MODE=local`, default)
-All user data (subscriptions, favorites, seen-state, comments) is stored on the server in a SQLite database. This is the simplest setup — data survives browser cache clears and works across devices on the same network.
-
-> ⚠️ **Warning:** In Server mode, **anyone who can access the web page can view and delete ALL data** (subscriptions, favorites, comments). This is fine for single-user or trusted-network setups. For public instances, use Client mode.
-
-### Client mode (`DATA_MODE=client`)
-All user data is stored in the browser's `localStorage`. Nothing is persisted server-side — the server only fetches TikTok data (profiles, videos, comments, streams) on demand. Each user's data stays in their own browser.
-
-Best for **public instances** shared by multiple users — no data leaks between users, and clearing browser data is the only way to lose your subscriptions.
-
-The mode is read-only in the Settings panel (shows the current mode + warning). To change it, set `DATA_MODE` in `.env` and restart the container.
-
----
-
-## Proxy Setup
-
-TikTok aggressively blocks requests coming from datacenter IPs, so **all** network access to TikTok goes through a SOCKS5 proxy. The proxy is passed to `yt-dlp` via the `--proxy=` flag and to the HTML scraper via `socks-proxy-agent`.
-
-### Format
-
-```
-socks5://user:pass@host:port       # authenticated
-socks5://host:port                 # no auth
-http://user:pass@host:8080         # yt-dlp also accepts HTTP proxies
-```
-
-### Where to configure
-
-You can set the proxy in two places (they compose):
-
-1. **`TIKTOK_PROXY` env var** in `.env` — the default value used when nothing is in the DB.
-2. **Settings → Proxy** in the app — URL + "Use proxy" toggle, stored in the DB and applied immediately without a rebuild. If the DB URL is empty, the env value is used.
-
-The proxy is **enabled by default** (`proxyEnabled=true`). Turn the toggle off in Settings if you need to debug direct requests.
-
-### Proxy on the host machine
-
-If your proxy runs on the same machine as Docker, you must address it from the container by `host.docker.internal` (not `127.0.0.1`):
-
-```dotenv
-TIKTOK_PROXY=socks5://host.docker.internal:1080
-```
-
-On older Linux you may need to add `--add-host=host.docker.internal:host-gateway` (modern Docker adds it automatically — the bundled `docker-compose.yml` already supports this).
-
-### SSH tunnel trick
-
-If you have SSH access to a server in the right region, spin up a one-shot SOCKS5 proxy:
-
-```bash
-ssh -D 1080 -N user@remote-host
-# then in .env:
-# TIKTOK_PROXY=socks5://host.docker.internal:1080
-```
-
-### Proxy is on by default
-
-Even if you set `TIKTOK_PROXY`, you can toggle it off at runtime from the Settings panel for testing — yt-dlp will then go direct (and TikTok will likely block it).
-
----
-
-## Usage Guide
-
-### Subscriptions
-1. Open the **Subscriptions** tab.
-2. Click **Subscribe**.
-3. Enter the creator's `@username`.
-4. libcut fetches the profile + recent videos via `yt-dlp` (through your proxy) and saves them locally.
-
-### Feed
-- The **Feed** tab shows only unseen videos from your subscriptions.
-- It auto-checks for new videos when you open the app.
-- Click **Check for new** to force a refresh.
-
-### Search
-- The top search bar searches both your local library and TikTok.
-- Use the **All / Authors / Videos** toggle to filter.
-- Search is primarily handle-based (exact `@username`) — TikTok's full-text search isn't reliably scrapeable.
-
-### Video player
-Click any video card to open the player:
-- **Favorite** — add/remove from your local favorites.
-- **Download** — save the `.mp4` to your computer.
-- **Comments** — view + refresh (the headless-browser service handles signing).
-- **Slides** — for photo posts, navigate with arrows, dots, or ←/→.
-- **Volume** — slider control.
-- **Mark watched / Mark as new** — toggle the seen state.
-- **Original** — opens the real TikTok page (with a confirmation dialog warning about tracking/ads).
-
-### Author profile
-Click an author's avatar/name to open their profile:
-- Avatar, display name, description, followers, following, likes, video count.
-- **Check for new** — fetch fresh videos.
-- **Load older videos** — paginate deeper into the backlog.
-- **Mark all as watched** — clears the "new" badges for that creator.
-- **Open on TikTok** — external link with confirmation dialog.
-
-### Settings
-Open the **Settings** tab to configure:
-- **Language** — English or Russian.
-- **Theme** — 6 built-in palettes.
-- **Accent color** — preset swatches.
-- **Custom CSS** — arbitrary CSS, injected into the page.
-- **Proxy** — toggle and URL.
-- **Behavior** — auto-mark videos as watched when opened.
-- **Cache** — video cache lifetime (minutes).
-- **Danger zone** — clear all data (subscriptions, favorites, comments, settings).
-
----
-
-## How It Works
-
-libcut is a Next.js 16 single-page app backed by a small REST API. The interesting parts live in `src/lib/tiktok/` and `mini-services/tiktok-comments/`.
-
-### `yt-dlp` + `curl_cffi`
-[`yt-dlp`](https://github.com/yt-dlp/yt-dlp) is invoked as a child process (`src/lib/tiktok/ytdlp.ts`) to fetch video lists, stream URLs, and metadata. `curl_cffi` is installed alongside it to provide **browser TLS fingerprint impersonation** — without it, TikTok blocks extraction with `Unexpected response from webpage request`. All `yt-dlp` requests go through the resolved SOCKS5 proxy via `--proxy=`.
-
-### HTML scraper
-`src/lib/tiktok/scraper.ts` fetches TikTok page HTML (also through the proxy via `socks-proxy-agent`) and extracts the `__UNIVERSAL_DATA_FOR_REHYDRATION__` JSON blob. This is **more reliable than yt-dlp** for:
-- author `nickname` (display name), `avatarLarger`, `signature` (bio),
-- `followerCount`, `followingCount`, `heartCount`, `videoCount`,
-- video `stats` (playCount, diggCount, commentCount, shareCount),
-- `imagePost.images[]` for **photo carousel detection**.
-
-### Image proxy
-TikTok's CDN blocks hotlinking (returns 403 on `<img>` tags from other origins). `src/lib/tiktok/images.ts` rewrites every remote image URL to `/api/tiktok/proxy-image?url=...`; the server fetches the image through the proxy and re-serves it. Avatars and thumbnails wouldn't load without this.
-
-### Comments service
-TikTok's comment API requires `a_bogus` request signing, which is non-trivial to reimplement. Instead, the `mini-services/tiktok-comments/` mini-service uses **headless Chromium** (`puppeteer-extra` + the stealth plugin) to:
-1. Load the video page.
-2. **Accept TikTok's GDPR consent banner** (EEA proxy regions show a consent wall that blocks comments until accepted — this was the long-standing blocker).
-3. **Click the comment icon** — TikTok fires the signed comment API request from the real browser.
-4. **Intercept the response** — `/api/comment/list` payloads are parsed into `{ authorName, authorAvatar, text, likeCount, postedAt, parentId, replyCount }`.
-
-The service listens on port `3040` (internal — not exposed to the host) and is called by the Next.js API route at `/api/tiktok/videos/[id]/comments`.
-
-> ⚠️ **Comments are slow (~30–40 seconds per load).** This is fundamental — the headless browser must load the full TikTok SPA, accept GDPR consent, click the comment icon, and wait for the signed API response. Comments are **not loaded automatically**; you must click the "Load comments" button in the player. Replies (threaded) are also loaded by clicking "View N replies" buttons. Comments are sorted by popularity (likes descending).
-
-> ⚠️ **If comments fail to load**, your proxy may not be working. libcut doesn't show a prominent error — if you see empty profiles or "Comments could not be loaded", check your proxy in Settings or `TIKTOK_PROXY` env var.
-
-### Temp cache
-`src/lib/tiktok/cache.ts` downloads videos on demand into `cache/videos/` (or `TIKTOK_CACHE_DIR`). A background timer runs every **1 minute** and evicts files older than `TIKTOK_CACHE_TTL_MIN` (default **10 minutes**). DB metadata is preserved — the file is just re-downloaded next time the user plays it.
-
-### Database
-SQLite via Prisma (`prisma/schema.prisma`), with models `Author`, `Video`, `Comment`, `Favorite`, `SearchHistory`, `Setting`. The `Setting` table holds runtime-edited values (language, theme, accent, custom CSS, proxy URL, proxy toggle, auto-mark-watched, data mode) so they survive restarts and don't require a rebuild.
-
----
-
-## Custom CSS
-
-Open **Settings → Custom CSS** to paste arbitrary CSS. It's injected into the page as a separate `<style id="libcut-custom-css">` tag inside `<head>`, applied **after** all themes, the accent color, and base styles — so it overrides everything.
-
-### Key CSS variables
-
-All variables are defined in [`src/app/globals.css`](src/app/globals.css). The most useful ones to override:
-
-| Variable | What it controls |
-|---|---|
-| `--primary`, `--primary-foreground` | Accent color (buttons, active items) + text on it |
-| `--background`, `--foreground` | Page background and base text |
-| `--card`, `--card-foreground` | Card background and text |
-| `--border`, `--input` | Border and input field colors |
-| `--ring` | Focus ring color |
-| `--sidebar`, `--sidebar-foreground` | Sidebar background and text |
-| `--muted`, `--muted-foreground` | Muted blocks and muted text |
-| `--accent`, `--accent-foreground` | Hover/selection accent |
-| `--secondary`, `--secondary-foreground` | Secondary color and text |
-| `--destructive` | Danger/destructive action color |
-| `--radius` | Base border radius (drives `--radius-sm/md/lg/xl`) |
-
-Themes target the `[data-theme="..."]` selector (e.g. `[data-theme="gruvbox"]`); the base palette lives on `:root` / `.dark`.
-
-### Example
-
-```css
-:root {
-  --primary: #ff6b6b;
-  --radius: 1rem;
-}
-
-/* Rounder video cards */
-.video-portrait {
-  border-radius: 1.5rem;
-}
-
-/* Per-theme override */
-[data-theme="gruvbox"] {
-  --primary: #fabd2f;
-}
-```
-
-### Tips
-- Colors can be in any CSS format (`#hex`, `rgb()`, `oklch()` — all built-in themes use `oklch()` or `#hex`).
-- The accent color from **Settings → Accent** also overrides `--primary` (plus `--ring`, `--sidebar-primary`, `--sidebar-ring`), but **custom CSS wins** if both set it.
-- The **Save** button applies instantly — no page reload. The value is persisted in the DB.
-- To reset, clear the textarea and click Save.
-
----
-
-## Local Development (without Docker)
-
-You'll need [bun](https://bun.sh), Python 3 with `pip`, and `ffmpeg` in your `PATH`.
-
-```bash
-# 1. Install JS deps + create the SQLite schema
-bun install
-bun run db:push
-
-# 2. Install yt-dlp + curl_cffi (for TikTok TLS impersonation)
-pip install yt-dlp curl_cffi
-
-# 3. Install ffmpeg (macOS: brew install ffmpeg; Debian/Ubuntu: sudo apt install ffmpeg)
-
-# 4. Start the comments mini-service (optional, only needed for comments)
-cd mini-services/tiktok-comments
-bun install
-bun run index.ts   # listens on http://localhost:3040
-
-# 5. Run the app in demo mode (built-in sample data, no proxy needed)
-DEMO_MODE=true bun run dev
-```
-
-Open http://localhost:3000.
-
-For real TikTok access, set `DEMO_MODE=false` and a working `TIKTOK_PROXY`:
-
-```bash
-DEMO_MODE=false TIKTOK_PROXY=socks5://127.0.0.1:1080 bun run dev
-```
-
-### Available scripts
-
-| Command | Action |
-|---|---|
-| `bun run dev` | Dev server on `:3000` |
-| `bun run build` | Production build (Turbopack, standalone output) |
-| `bun run start` | Run the built standalone server |
-| `bun run lint` | ESLint |
-| `bun run db:push` | Apply the Prisma schema to SQLite |
-| `bun run db:generate` | Regenerate the Prisma client |
-| `bun run db:reset` | Reset the DB |
-
----
-
-## Troubleshooting
-
-- **Videos don't load.**
-  Make sure `DEMO_MODE=false` in `.env` and that `TIKTOK_PROXY` is set and working. Check the logs:
-  ```bash
-  docker compose logs libcut | grep -iE 'proxy|yt-dlp|error'
-  ```
-
-- **Avatars / thumbnails don't load.**
-  All images are proxied through `/api/tiktok/proxy-image` because TikTok's CDN blocks hotlinking. Check that the proxy is enabled and reachable. If your proxy is on the host, use `host.docker.internal` (not `127.0.0.1`).
-
-- **Comments are slow or empty.**
-  The comments service uses a **headless Chromium** that loads the video page, accepts GDPR consent, clicks the comment icon, and intercepts the signed API response. First load takes **~20–40 seconds** (browser spin-up + page + consent + click + scroll). Subsequent loads are faster. If comments are consistently empty:
-  - Ensure Chromium is installed (the Docker image handles this automatically; for local dev, run `cd mini-services/tiktok-comments && bun install`).
-  - Ensure the comments service is running on port 3040.
-  - GDPR consent is auto-accepted — but if TikTok changes the consent flow, comments may silently break. Try a different proxy region.
-
-- **Build fails with exit code `137`.**
-  That's an OOM kill — the build needs **~2 GB of free RAM** (Turbopack + Chromium download). Add more memory to the server, or build on a beefier machine and `docker save` / `docker load` the image.
-
-- **`bun install --frozen-lockfile` fails during build.**
-  Your local `bun.lock` is out of sync with `package.json`. Run `bun install` on the host, commit the updated `bun.lock`, then rebuild.
-
-- **Proxy on the host not reachable from the container.**
-  Use `host.docker.internal` instead of `127.0.0.1`:
-  ```dotenv
-  TIKTOK_PROXY=socks5://host.docker.internal:1080
-  ```
-
-- **No sound on iOS.**
-  Safari blocks autoplay with sound. Tap the video (or the play button overlay) — sound will turn on. This is intentional (muted autoplay + unmute on user gesture).
-
-- **Photo posts show an error.**
-  Photo carousels are detected by the HTML scraper from `imagePost.images[]` in the `__UNIVERSAL_DATA_FOR_REHYDRATION__` JSON. If the scraper can't reach TikTok (proxy issue, region block, TikTok layout change), the post may fall through to the video player and fail. Check the proxy and rebuild the image to get a fresh `yt-dlp`.
-
-- **I want to reset everything.**
-  ```bash
-  docker compose down -v && docker compose up -d --build
-  ```
-  Or use **Settings → Danger zone → Clear all data** in the UI.
-
----
-
-## Data Storage
-
-Docker Compose creates two named volumes (see [`docker-compose.yml`](docker-compose.yml)):
-
-| Volume | In container | What it stores |
-|---|---|---|
-| `libcut-db` | `/app/db` | SQLite database `custom.db` — subscriptions, videos, favorites, comments, settings |
-| `libcut-cache` | `/app/cache/videos` | Temporarily downloaded `.mp4` files (cleaned by TTL, default 10 minutes) |
-
-Inspect on-disk paths:
-
-```bash
-docker volume inspect libcut_libcut-db
-docker volume inspect libcut_libcut-cache
-```
-
-Wipe everything (loses subscriptions + favorites + comments + settings):
-
-```bash
-docker compose down -v
-```
-
----
-
-## Updating yt-dlp
-
-TikTok changes its internal API frequently, so `yt-dlp` needs to be updated periodically. The simplest way is to rebuild the image — the Dockerfile pulls a fresh `yt-dlp` via `pip3 install` on every build:
-
-```bash
+```sh
+git clone https://github.com/fxmfxmfx/libcut.git
+cd libcut
+cp .env.example .env
+# Review .env, then:
 docker compose up -d --build
 ```
 
-To pin a specific version for stability, edit the [`Dockerfile`](Dockerfile):
+Open **http://localhost:3000**. The default is offline demo data and a loopback-only port binding. For live TikTok data, set these values in `.env` and recreate the container:
 
-```dockerfile
-RUN pip3 install --no-cache-dir --break-system-packages yt-dlp==<version> curl_cffi
+```dotenv
+DEMO_MODE=false
+TIKTOK_PROXY=socks5://your-proxy-host:1080
+DATA_MODE=local
 ```
 
-If extraction suddenly breaks on a working setup, the first thing to try is rebuilding the image — the upstream `yt-dlp` maintainers usually ship a fix within hours of TikTok breaking things.
+Authenticated SOCKS5 and HTTP(S) proxies are supported. URL-encode special characters in credentials. To reach a proxy on the Docker host, use `host.docker.internal` and add the platform's host-gateway mapping if required.
 
----
+For access from other devices on a **trusted LAN**, set `LIBCUT_BIND` to your LAN interface address (or `0.0.0.0` if appropriate). Do not forward this unauthenticated service to the public internet.
 
-## Tech Stack
+```sh
+docker compose logs -f libcut
+docker compose ps
+docker compose down
+```
 
-- **[Next.js 16](https://nextjs.org/)** (App Router, Turbopack, standalone output) + **React 19** + **TypeScript**.
-- **[Tailwind CSS 4](https://tailwindcss.com/)** + **[shadcn/ui](https://ui.shadcn.com/)** + Radix UI primitives.
-- **[Prisma](https://www.prisma.io/)** + **SQLite** for the local database.
-- **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** + **[curl_cffi](https://github.com/lexiforest/curl_cffi)** + **[ffmpeg](https://ffmpeg.org/)** for TikTok video/metadata extraction with TLS impersonation.
-- **[puppeteer-extra](https://github.com/berstend/puppeteer-extra)** + stealth plugin + headless **Chromium** for comment extraction.
-- **[TanStack Query](https://tanstack.com/query)** (server state) + **[Zustand](https://github.com/pmndrs/zustand)** (UI state + i18n).
-- **[socks-proxy-agent](https://github.com/TooTallNate/proxy-agents)** for proxied HTML scraping.
-- **[bun](https://bun.sh)** as the runtime and package manager.
+The named volumes retain SQLite and cached media. **`docker compose down -v` deletes those volumes.** The internal browser service listens only on loopback port 3040; only port 3000 is published.
 
----
+## Storage modes
 
-## License
+| Mode | Personal data | Shared server storage |
+| --- | --- | --- |
+| `DATA_MODE=local` | Subscriptions, favorites, watched state, and preferences in SQLite; shared by everyone with access | Metadata, comments, media cache |
+| `DATA_MODE=client` | Subscriptions, favorites, watched state, and preferences in this browser's localStorage | Public metadata, comments, media cache; no server personal-data API |
 
-Released under the **MIT License**. See [LICENSE](LICENSE) for the full text.
-Vibe-coded by GLM 5.2 which is open-weight model developed by z.ai  
+Client data belongs to a browser and origin, not an account. A different device, port, hostname, or cleared site storage has a separate library. Use **Settings → Export backup / Import backup** to transfer it. Export a backup before clearing site storage. Damaged storage is preserved for recovery rather than overwritten silently.
 
-### Credits
+In client mode, local search uses your subscriptions, saved favorites, and metadata already loaded in that browser. It does not list the shared server library. The server still caches public TikTok metadata, so this mode is not stateless.
 
-This project would not be possible without:
+## Search and TikTok availability
 
-- **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** — the workhorse that does all the actual TikTok extraction. 🙏
-- **[Next.js](https://nextjs.org/)** — React framework (App Router, Turbopack).
-- **[Prisma](https://www.prisma.io/)** — type-safe ORM for SQLite.
-- **[shadcn/ui](https://ui.shadcn.com/)** — the UI component library.
-- **[puppeteer](https://pptr.dev/)** + **puppeteer-extra-plugin-stealth** — headless Chromium automation for comments.
+Search accepts keywords, `@username`, a full `https://www.tiktok.com/@username` profile URL, or a full `/@username/video/ID` or `/photo/ID` URL. Shortened `vm.tiktok.com` links are not resolved: open the link and use its full address.
 
-Inspired by [redlib](https://github.com/redlib-org/redlib) and [libreddit](https://github.com/libreddit/libreddit) — the same privacy-first, self-hosted spirit, applied to TikTok.
+Library results appear independently of TikTok. Live keyword search and comments require the separate Chromium service. TikTok can return captcha pages, regional restrictions, or empty responses; these are reported as errors. Use a working proxy and check the service logs. Demo mode does not contact TikTok and cannot establish whether a particular proxy works.
+
+## Local development
+
+Requires **Node 22+**, **Bun 1.3+**, and, for live mode, `curl`, `ffmpeg`, Python with `yt-dlp` and `curl_cffi`, plus Chromium for the browser service.
+
+```sh
+cp .env.example .env
+mkdir -p db
+# Use absolute paths for local SQLite and cache, including standalone production:
+export DATABASE_URL="file:$(pwd)/db/custom.db"
+export TIKTOK_CACHE_DIR="$(pwd)/cache/videos"
+bun install --frozen-lockfile
+bun run db:generate
+bun run db:push
+bun run dev
+```
+
+Save those absolute values in `.env` if you want them to persist between terminals. Development runs on port 3000. Demo mode works without Chromium or yt-dlp.
+
+For live search and comments, run a second terminal:
+
+```sh
+cd mini-services/tiktok-comments
+PUPPETEER_SKIP_DOWNLOAD=true bun install --frozen-lockfile
+# Set PUPPETEER_EXECUTABLE_PATH to your system Chromium, or install one:
+bunx puppeteer browsers install chrome
+bun run dev
+```
+
+The application passes its effective proxy to the loopback browser service. In client mode that proxy is controlled by the server environment; clients cannot read its credentials or change global settings.
+
+Production build and startup:
+
+```sh
+bun run build
+bun run start
+```
+
+## Configuration
+
+Copy [.env.example](.env.example); keep `.env` and credentials out of Git.
+
+| Variable | Purpose |
+| --- | --- |
+| `DEMO_MODE` | `true` serves offline sample data; `false` requests TikTok |
+| `DATA_MODE` | `local` or `client`; requires a restart |
+| `TIKTOK_PROXY` | SOCKS5/SOCKS5H/HTTP(S) upstream proxy |
+| `DATABASE_URL` | SQLite URL; use an absolute path for local production |
+| `TIKTOK_CACHE_DIR` | Download cache directory |
+| `TIKTOK_CACHE_TTL_MIN` | Media retention, default 10 minutes; metadata remains |
+| `TIKTOK_SOCKET_TIMEOUT` / `TIKTOK_RETRIES` | yt-dlp network timeout and retries, defaults 30 / 3 |
+| `YTDLP_PATH` | yt-dlp executable, default `yt-dlp` |
+| `PUPPETEER_EXECUTABLE_PATH` | Chromium executable for the browser service |
+| `LIBCUT_BIND` | Compose host binding, default `127.0.0.1` |
+
+Appearance settings apply immediately. Custom CSS is limited to local styles; external resource URLs and `@import` are rejected.
+
+## Checks and contributions
+
+```sh
+bun run check          # ESLint, TypeScript, and Bun regression tests
+bun run build          # production build
+bunx playwright install chromium
+bun run test:e2e       # isolated demo databases, local + client browser tests
+```
+
+The browser tests build on the existing production output: run `bun run build` first. They create temporary databases and do not use your configured SQLite file. `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` can select an existing Chromium installation. Docker checks require Docker; browser-backed live requests require reachable TikTok and a suitable proxy.
+
+[Project audit](docs/PROJECT-AUDIT.md) records validation and remaining limitations. Include a clear description, relevant checks, and screenshots for UI changes in pull requests. License: [MIT](LICENSE).
