@@ -67,7 +67,9 @@ jobs:
             if (!feed.videos?.length) throw new Error("Demo feed is empty");
             const response = await fetch(`http://127.0.0.1:3000/api/tiktok/videos/${feed.videos[0].id}/download`, { headers: { range: "bytes=0-31" } });
             if (response.status !== 206 || (await response.arrayBuffer()).byteLength !== 32) throw new Error("Video download failed");
-            console.log("Container startup, both services, feed, and range download passed");
+            const search = await (await fetch("http://127.0.0.1:3000/api/tiktok/search?q=garlic&kind=video&source=live")).json();
+            if (search.liveError || !search.results?.length || !search.results[0].publishedAt) throw new Error("Video search failed or erased metadata");
+            console.log("Container startup, both services, feed, video search, and range download passed");
           '
       - name: Container logs
         if: failure()

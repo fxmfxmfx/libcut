@@ -364,7 +364,7 @@ export class DemoProvider implements TikTokProvider {
             results.push({
               kind: "video",
               username: a.profile.username,
-              video: { ...v, authorUsername: a.profile.username },
+              video: { ...v, publishedAt: null, authorUsername: a.profile.username },
             });
           }
           // Suppress unused var

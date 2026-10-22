@@ -3,10 +3,15 @@ import { test, expect } from "@playwright/test";
 test("search returns playable videos, mobile comments scroll, downloads support ranges", async ({ page, request }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  const liveResponse = await request.get("/api/tiktok/search?q=garlic&kind=video&source=live");
+  const live = await liveResponse.json();
+  expect(live.liveError).toBeNull();
+  expect(live.results[0].id).toBeTruthy();
+  expect(live.results[0].tiktokId).toMatch(/^\d+$/);
+  expect(live.results[0].publishedAt).not.toBeNull();
   await page.goto("/");
-  await page.getByRole("textbox").fill("city.cookhouse");
-  await expect(page.getByRole("heading", { name: "AUTHORS (1)" })).toBeVisible();
-  await page.getByRole("button", { name: /@city.cookhouse/ }).first().click();
+  await page.getByRole("textbox").fill("garlic");
+  await expect(page.getByRole("heading", { name: "VIDEOS (1)" })).toBeVisible();
   const card = page.locator('[role="button"]').filter({ has: page.locator(".video-portrait") }).first();
   await expect(card).toBeVisible();
   await card.click();

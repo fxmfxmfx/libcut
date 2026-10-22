@@ -36,11 +36,30 @@ export async function storeVideos(authorId: string, videos: AuthorVideo[], seen 
   for (const v of videos) {
     const where = { authorId_tiktokId: { authorId, tiktokId: v.tiktokId } };
     const before = await db.video.findUnique({ where, select: { id: true } });
-    const { images, isGallery, ...metadata } = v;
+    const { images, isGallery } = v;
+    // Search results carry extra author fields. Only model columns may reach
+    // Prisma, even when callers pass a structural subtype of AuthorVideo.
+    const metadata = {
+      tiktokId: v.tiktokId, url: v.url, title: v.title,
+      description: v.description, thumbnailUrl: v.thumbnailUrl,
+      duration: v.duration, width: v.width, height: v.height,
+      viewCount: v.viewCount, likeCount: v.likeCount,
+      commentCount: v.commentCount, shareCount: v.shareCount,
+      publishedAt: v.publishedAt,
+    };
     await db.video.upsert({
       where,
       create: { ...metadata, authorId, seen, seenAt: seen ? new Date() : null, isGallery: isGallery ?? false, images: images ? JSON.stringify(images) : null },
-      update: { ...metadata, ...(isGallery !== undefined ? { isGallery } : {}), ...(images?.length ? { images: JSON.stringify(images) } : {}) },
+      update: {
+        ...metadata,
+        // Flat/search metadata omits dates and dimensions; do not erase the
+        // known publication order or richer profile metadata on a refresh.
+        title: v.title ?? undefined, description: v.description ?? undefined,
+        thumbnailUrl: v.thumbnailUrl ?? undefined,
+        publishedAt: v.publishedAt ?? undefined,
+        width: v.width || undefined, height: v.height || undefined,
+        duration: isGallery ? 0 : v.duration || undefined,
+        ...(isGallery !== undefined ? { isGallery } : {}), ...(images?.length ? { images: JSON.stringify(images) } : {}) },
     });
     if (!before) newVideos++;
   }
