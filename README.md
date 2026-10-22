@@ -60,6 +60,14 @@ Client data belongs to a browser and origin, not an account. A different device,
 
 In client mode, local search uses your subscriptions, saved favorites, and metadata already loaded in that browser. It does not list the shared server library. The server still caches public TikTok metadata, so this mode is not stateless.
 
+## Watching the feed
+
+Open **Feed** after subscribing to creators. Swipe up on a phone, scroll with a mouse/trackpad, or focus the feed and press **↑ / ↓** to change videos. Desktop arrow buttons also switch videos. Tap the video to pause. Sound starts enabled; use the volume slider or speaker button to adjust it. If the browser blocks autoplay with sound, tap Play once. Volume and mute are saved in this browser and shared by the feed and video player.
+
+Videos opened from search, favorites, or a creator profile use the same vertical player. Swipe through that collection; use the bottom slider to seek and the close button to return.
+
+Comments open over the feed and pause playback. Favorites, downloads, and watched toggles are available beside each video. Automatic watched marking happens during playback; it keeps the video in the current queue so you can scroll back. Watched videos leave the unread feed on the next visit. Local mode loads additional pages as you approach the end.
+
 ## Search and TikTok availability
 
 Search accepts keywords, `@username`, a full `https://www.tiktok.com/@username` profile URL, or a full `/@username/video/ID` or `/photo/ID` URL. Shortened `vm.tiktok.com` links are not resolved: open the link and use its full address.
@@ -94,6 +102,10 @@ bunx puppeteer browsers install chrome
 bun run dev
 ```
 
+The browser service is built with Bun and runs on Node.js: `bun run build && bun run start` in `mini-services/tiktok-comments/`. For development, rebuild after editing TypeScript; `bun run dev` watches the generated JavaScript. HTTP CONNECT forwarding currently requires Node.js.
+
+For systemd, use [the browser service unit](scripts/systemd/libcut-comments.service) with the `libcut` OS account, deployment in `/opt/libcut`, and `/etc/libcut.env`. It creates writable HOME/XDG directories; a nonexistent or read-only home prevents Chromium from starting.
+
 The application passes its effective proxy to the loopback browser service. In client mode that proxy is controlled by the server environment; clients cannot read its credentials or change global settings.
 
 Production build and startup:
@@ -102,6 +114,8 @@ Production build and startup:
 bun run build
 bun run start
 ```
+
+When deploying standalone artifacts, extract into a fresh release directory and switch the service to it. Do not overlay builds: leftover generated files can serve an outdated interface. Keep the runtime environment, database, media cache, and comment service outside the replacement or preserve them explicitly.
 
 ## Configuration
 

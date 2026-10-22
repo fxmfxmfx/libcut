@@ -160,11 +160,12 @@ export async function scrapeVideoMeta(videoUrl: string): Promise<Partial<VideoMe
   };
 }
 
-export async function scrapeSearch(query: string): Promise<any[]> {
+export async function scrapeSearch(query: string, kind: "all" | "author" | "video" = "all"): Promise<any[]> {
   const url = new URL("http://127.0.0.1:3040/search");
   url.searchParams.set("q", query);
+  url.searchParams.set("kind", kind);
   try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(45_000), headers: { "x-libcut-proxy": (await getEffectiveProxy()) ?? "" } });
+    const response = await fetch(url, { signal: AbortSignal.timeout(75_000), headers: { "x-libcut-proxy": (await getEffectiveProxy()) ?? "" } });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || "TikTok search unavailable");
     if (!Array.isArray(body.results)) throw new Error("Invalid search response");

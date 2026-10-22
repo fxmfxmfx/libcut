@@ -1,0 +1,32 @@
+[Unit]
+Description=Libcut TikTok browser service
+After=network.target
+
+[Service]
+Type=simple
+User=libcut
+Group=libcut
+WorkingDirectory=/opt/libcut/mini-services/tiktok-comments
+EnvironmentFile=/etc/libcut.env
+Environment=PUPPETEER_SKIP_DOWNLOAD=true
+Environment=PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+Environment=HOME=/var/lib/libcut/browser
+Environment=XDG_CONFIG_HOME=/var/lib/libcut/browser/config
+Environment=XDG_CACHE_HOME=/var/cache/libcut/browser
+StateDirectory=libcut/browser
+StateDirectoryMode=0750
+CacheDirectory=libcut/browser
+CacheDirectoryMode=0750
+ExecStart=/usr/local/bin/node dist/index.mjs
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/libcut /var/cache/libcut
+
+[Install]
+WantedBy=multi-user.target

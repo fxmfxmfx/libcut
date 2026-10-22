@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+- Load comment replies on demand with pagination, duplicate filtering, and independent retry controls.
+
+- Fetch public comments through the configured proxy before opening Chromium; wait for hydrated comment controls in the browser fallback and identify CAPTCHA failures explicitly.
+
+- Use the vertical swipe player for search, favorites, and author videos, preserving the selected collection and adding seeking.
+- Put close author matches above search videos; show videos first for other searches.
+- Queue browser requests instead of immediately rejecting them as busy; return comments after the first valid batch and retain displayed comments during refresh.
+
+- Save shared volume and mute preferences in browser storage across page reloads, feed navigation, and individual video playback.
+
+- Forward the selected search kind to the browser service so video searches cannot silently receive and discard author-only results.
+- Wait for actual search results after TikTok’s empty bootstrap responses, and treat empty upstream failures as query errors instead of caching them as successful results.
+- Run the browser service on Node.js to fix HTTP CONNECT failures under Bun; provide writable Chromium configuration/cache directories for systemd deployments and log sanitized launch errors.
+- Added an orange shield tab icon, sound enabled by default, and a shared feed volume control. Feed title and refresh controls now share the search toolbar.
+
+- Added a vertical, full-height subscription feed with native scroll snapping, mobile swipes, keyboard navigation, and desktop controls.
+- Only the active video plays; comments and hidden tabs pause playback. Nearby videos are prepared without mounting players for the entire queue.
+- Added an in-feed comments sheet, favorites, watched toggles, sound controls, downloads, and horizontal photo navigation.
+- Keep the current viewing queue stable when videos become watched; local feeds load additional pages with a stable cursor.
+
 ## 2.0.0 — 2026-10-22
 
 Libcut 2.0 refreshes the client experience, improves media delivery, and updates the application dependency stack.

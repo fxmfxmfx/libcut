@@ -5,7 +5,7 @@ cd /app
 ./node_modules/.bin/prisma db push --skip-generate
 
 cd /app/mini-services/tiktok-comments
-bun run index.ts &
+node dist/index.mjs &
 comments_pid=$!
 
 cd /app

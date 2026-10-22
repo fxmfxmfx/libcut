@@ -45,3 +45,6 @@ playwright-report
 .playwright-mcp
 prisma/*.db
 prisma/*.db-*
+
+# Build the browser service for the image runtime.
+mini-services/*/dist

@@ -31,6 +31,8 @@ jobs:
       - run: bun run test:upgrade
       - run: bun run typecheck
         working-directory: mini-services/tiktok-comments
+      - run: bun run build
+        working-directory: mini-services/tiktok-comments
       - run: bun run test
         working-directory: mini-services/tiktok-comments
       - run: bun run build

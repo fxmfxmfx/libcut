@@ -53,6 +53,7 @@ server.log
 /examples/
 
 # Mini-service runtime
+mini-services/*/dist/
 mini-services/*/node_modules
 mini-services/*/service.log
 

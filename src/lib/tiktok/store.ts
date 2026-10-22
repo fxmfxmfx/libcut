@@ -1,5 +1,6 @@
 "use client";
 
+import type { VideoInfo } from "./queries";
 import { create } from "zustand";
 import { translate, type Lang } from "./i18n";
 
@@ -8,7 +9,7 @@ export type Tab = "feed" | "subscriptions" | "favorites" | "search" | "settings"
 const PREFERENCES_KEY = "libcut-preferences-v1";
 export const preferencesStorageKey = PREFERENCES_KEY;
 const STORAGE_ERROR_EVENT = "libcut:storage-error";
-type StorageScope = "preferences" | "clientData";
+type StorageScope = "preferences" | "clientData" | "audio";
 const storageErrors: Partial<Record<StorageScope, string>> = {};
 let storedPreferencesUnreadable = false;
 let unreadablePreferencesRaw: string | null = null;
@@ -46,6 +47,7 @@ interface UIState extends Preferences {
   activeTab: Tab;
   selectedAuthor: string | null;
   openVideoId: string | null;
+  openVideoQueue: VideoInfo[];
   openVideoSource: { url: string; tiktokId: string } | null;
   searchQuery: string;
   searchKind: "all" | "author" | "video";
@@ -55,7 +57,7 @@ interface UIState extends Preferences {
   setTab: (t: Tab) => void;
   openAuthor: (username: string) => void;
   closeAuthor: () => void;
-  openVideo: (id: string, source?: { url: string; tiktokId: string }) => void;
+  openVideo: (id: string, source?: { url: string; tiktokId: string }, queue?: VideoInfo[]) => void;
   closeVideo: () => void;
   setSearch: (q: string, kind?: "all" | "author" | "video") => void;
   setLang: (l: Lang) => void;
@@ -135,6 +137,7 @@ export const useView = create<UIState>((set, get) => ({
   activeTab: "feed",
   selectedAuthor: null,
   openVideoId: null,
+  openVideoQueue: [],
   openVideoSource: null,
   searchQuery: "",
   searchKind: "all",
@@ -145,8 +148,8 @@ export const useView = create<UIState>((set, get) => ({
   setTab: (t) => set({ activeTab: t, selectedAuthor: null }),
   openAuthor: (username) => set({ selectedAuthor: username }),
   closeAuthor: () => set({ selectedAuthor: null }),
-  openVideo: (id, source) => set({ openVideoId: id, openVideoSource: source ?? null }),
-  closeVideo: () => set({ openVideoId: null, openVideoSource: null }),
+  openVideo: (id, source, queue) => set({ openVideoId: id, openVideoSource: source ?? null, openVideoQueue: queue ?? [] }),
+  closeVideo: () => set({ openVideoId: null, openVideoSource: null, openVideoQueue: [] }),
   setSearch: (q, kind) =>
     set((s) => ({ searchQuery: q, searchKind: kind ?? s.searchKind, activeTab: "search", selectedAuthor: null })),
   setLang: (lang) => updatePreference("lang", lang, set, get),

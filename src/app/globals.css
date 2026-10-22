@@ -298,3 +298,7 @@
 .video-portrait {
   aspect-ratio: 9 / 16;
 }
+
+/* Native touch scrolling with one full-height item per snap point. */
+.feed-scroll { scrollbar-width: none; }
+.feed-scroll::-webkit-scrollbar { display: none; }

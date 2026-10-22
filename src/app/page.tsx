@@ -18,6 +18,7 @@ import { useStatus } from "@/lib/tiktok/queries";
 export default function Home() {
   const { activeTab, selectedAuthor, openVideoId, modeReady, preferencesReady, t } = useView();
   const status = useStatus();
+  const immersiveFeed = activeTab === "feed" && !selectedAuthor;
   useEffect(() => {
     if (openVideoId) {
       const prev = document.body.style.overflow;
@@ -38,15 +39,15 @@ export default function Home() {
   );
 
   return (
-    <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <div className="flex flex-1 flex-col md:flex-row">
+    <div className={immersiveFeed ? "flex h-dvh flex-col overflow-hidden bg-background text-foreground" : "flex min-h-screen flex-col bg-background text-foreground"}>
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         <Sidebar />
 
-        <div className="flex min-h-screen flex-1 flex-col">
+        <div className={immersiveFeed ? "flex min-h-0 min-w-0 flex-1 flex-col pb-[calc(64px+env(safe-area-inset-bottom))] md:pb-0" : "flex min-h-screen min-w-0 flex-1 flex-col"}>
           <TopBar />
 
-          <main className="flex-1 px-4 pb-24 pt-5 md:px-6 md:pb-10">
-            <div className="mx-auto w-full max-w-[1600px]">
+          <main className={immersiveFeed ? "min-h-0 flex-1" : "flex-1 px-4 pb-24 pt-5 md:px-6 md:pb-10"}>
+            <div className={immersiveFeed ? "h-full" : "mx-auto w-full max-w-[1600px]"}>
               {selectedAuthor ? (
                 <AuthorProfile key={selectedAuthor} username={selectedAuthor} />
               ) : activeTab === "feed" ? (
@@ -63,9 +64,9 @@ export default function Home() {
             </div>
           </main>
 
-          <footer className="mt-auto hidden border-t border-border/60 px-4 py-4 text-center text-xs text-muted-foreground md:block md:px-6">
+          {!immersiveFeed && <footer className="mt-auto hidden border-t border-border/60 px-4 py-4 text-center text-xs text-muted-foreground md:block md:px-6">
             libcut 2.0
-          </footer>
+          </footer>}
         </div>
       </div>
 

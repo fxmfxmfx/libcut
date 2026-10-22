@@ -2,6 +2,7 @@
 
 import {
   useQuery,
+  useInfiniteQuery,
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
@@ -49,6 +50,7 @@ const api = {
   },
 };
 
+import { useMemo } from "react";
 import { useView } from "./store";
 import { useClientData } from "./client-data";
 
@@ -137,11 +139,19 @@ export function useProxyCheck(enabled = true) {
 
 export function useFeed() {
   const enabled = useView((s) => s.modeReady && s.dataMode === "local");
-  return useQuery({
+  const query = useInfiniteQuery({
     enabled,
     queryKey: ["feed"],
-    queryFn: () => api.get<{ videos: VideoInfo[] }>("/api/tiktok/feed?limit=100"),
+    initialPageParam: "",
+    queryFn: ({ pageParam, signal }) => fetch(`/api/tiktok/feed?limit=20${pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ""}`, { signal }).then(async (response) => {
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      return data as { videos: VideoInfo[]; nextCursor: string | null };
+    }),
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
   });
+  const data = useMemo(() => query.data ? { videos: query.data.pages.flatMap((page) => page.videos) } : undefined, [query.data]);
+  return { ...query, data };
 }
 
 export function useSubscriptions() {
@@ -172,8 +182,9 @@ export function useAuthor(username: string | null) {
   });
 }
 
-export function useVideo(id: string | null) {
-  const source = useView((s) => s.openVideoSource);
+export function useVideo(id: string | null, videoSource?: Pick<VideoInfo, "url" | "tiktokId">) {
+  const modalSource = useView((s) => s.openVideoSource);
+  const source = videoSource ?? modalSource;
   const dataMode = useView((s) => s.dataMode);
   return useQuery({
     queryKey: ["video", id],
@@ -198,6 +209,11 @@ export function useComments(id: string | null, enabled = true) {
   });
 }
 
+function isTransientSearchBusy(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /\bbusy\b|\b429\b|\b503\b|too many requests|temporarily unavailable/i.test(message);
+}
+
 export function useSearch(query: string, kind: "all" | "author" | "video") {
   const dataMode = useView((s) => s.dataMode);
   const subscriptions = useClientData((s) => s.subscriptions);
@@ -210,6 +226,7 @@ export function useSearch(query: string, kind: "all" | "author" | "video") {
   const request = (source: string, signal: AbortSignal) => fetch(`/api/tiktok/search?q=${encodeURIComponent(query)}&kind=${kind}&source=${source}`, { signal }).then(async (r) => {
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+    if (source === "live" && data.liveError && !data.results?.length) throw new Error(data.liveError);
     return data as { results: any[]; liveError: string | null };
   });
   const library = useQuery({
@@ -222,7 +239,7 @@ export function useSearch(query: string, kind: "all" | "author" | "video") {
     queryFn: ({ signal }) => request("live", signal),
     enabled: query.trim().length >= 2,
     staleTime: 60_000,
-    retry: false,
+    retry: (failureCount, error) => failureCount < 1 && isTransientSearchBusy(error),
   });
   const q = query.toLowerCase().replace(/^@/, "");
   const clientResults: any[] = [];
@@ -245,8 +262,11 @@ export function useSearch(query: string, kind: "all" | "author" | "video") {
     const key = r.kind === "author" ? `author:${r.username}` : `video:${r.tiktokId}`;
     if (!unique.has(key)) unique.set(key, r);
   }
+  const liveError = live.isFetching || live.data?.results?.length
+    ? null
+    : live.data?.liveError ?? live.error?.message ?? library.error?.message ?? null;
   return {
-    data: { results: [...unique.values()], liveError: live.data?.liveError ?? live.error?.message ?? library.error?.message ?? null },
+    data: { results: [...unique.values()], liveError },
     isLoading: (library.isLoading || live.isLoading) && unique.size === 0,
     isFetching: library.isFetching || live.isFetching,
     refetch: () => { void library.refetch(); void live.refetch(); },
@@ -319,6 +339,7 @@ export function useMarkSeen() {
 export function useRefresh() {
   const qc = useQueryClient();
   return useMutation({
+    mutationKey: ["feed-refresh"],
     mutationFn: () => api.post<{ totalNew: number; checkedAuthors: number }>("/api/tiktok/refresh"),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["feed"] });

@@ -35,6 +35,8 @@ RUN bun install --frozen-lockfile
 WORKDIR /app
 COPY . .
 
+RUN cd mini-services/tiktok-comments && bun run build
+
 RUN bun run build
 
 RUN mkdir -p /app/cache/videos /app/db /app/scripts

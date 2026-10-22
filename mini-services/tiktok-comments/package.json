@@ -3,9 +3,11 @@
   "version": "2.0.0",
   "private": true,
   "scripts": {
-    "dev": "bun --hot index.ts",
-    "test": "bun test search-parsing.test.ts",
-    "typecheck": "tsc --noEmit --target es2022 --module esnext --moduleResolution bundler --esModuleInterop --skipLibCheck --types bun-types index.ts search-parsing.ts"
+    "dev": "bun run build && node --watch dist/index.mjs",
+    "test": "bun test search-parsing.test.ts && node --test proxy-runtime.test.mjs",
+    "typecheck": "tsc --noEmit --target es2022 --module esnext --moduleResolution bundler --esModuleInterop --skipLibCheck --types bun-types index.ts search-parsing.ts",
+    "build": "bun build index.ts --target=node --packages=external --outfile=dist/index.mjs",
+    "start": "node dist/index.mjs"
   },
   "dependencies": {
     "proxy-chain": "^3.0.1",

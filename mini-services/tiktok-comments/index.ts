@@ -1,10 +1,10 @@
 /**
  * tiktok-comments mini-service.
  *
- * Extracts TikTok comments using a headless Chromium (puppeteer + stealth).
+ * Fetches public TikTok comments via curl_cffi, with Chromium as a fallback.
  * - Accepts GDPR consent (required for EEA proxy regions).
  * - Clicks the comment icon to trigger the signed comment API request.
- * - Captures top-level comments AND reply threads (clicks "View replies").
+ * - Captures the first comment batch and included reply previews.
  * - Sorts by popularity (likes descending).
  *
  * Port: 3040. The Next.js app calls this via localhost.
@@ -12,6 +12,9 @@
 
 import { createServer } from "http";
 import { URL } from "url";
+import { createHash } from "node:crypto";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import { Server as ProxyServer } from "proxy-chain";
@@ -23,11 +26,28 @@ const PORT = 3040;
 const HOST = "127.0.0.1";
 const MAX_TOP_LEVEL_COMMENTS = 100;
 const MAX_CONCURRENT_SCRAPES = 2;
-const SCRAPE_TIMEOUT_MS = 75_000;
-const NAVIGATION_TIMEOUT_MS = 25_000;
+const MAX_QUEUED_SCRAPES = 40;
+const MAX_QUEUE_WAIT_MS = 30_000;
+const MAX_RESULT_CACHE_ENTRIES = 500;
+const SEARCH_CACHE_TTL_MS = 45_000;
+const SCRAPE_TIMEOUT_MS = 50_000;
+const NAVIGATION_TIMEOUT_MS = 20_000;
 const SEARCH_TIMEOUT_MS = 35_000;
 const MAX_SEARCH_QUERY_LENGTH = 200;
 let activeScrapes = 0;
+let activeProxyKey: string | null | undefined;
+
+interface ScrapeJob<T = unknown> {
+  proxyKey: string | null;
+  run: () => Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason: unknown) => void;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
+const scrapeQueue: ScrapeJob[] = [];
+const inFlightScrapes = new Map<string, Promise<unknown>>();
+const resultCache = new Map<string, { expiresAt: number; value: unknown }>();
 
 function validateVideoUrl(value: string): string | null {
   try {
@@ -82,6 +102,102 @@ function configuredProxy(value: string | null): string | null {
   }
 }
 
+function effectiveProxy(proxyOverride?: string | null): string | null {
+  return configuredProxy(
+    proxyOverride === undefined
+      ? (process.env.TIKTOK_PROXY || process.env.HTTPS_PROXY || null)
+      : proxyOverride,
+  );
+}
+
+function workKey(kind: string, proxyKey: string | null, value: string): string {
+  return createHash("sha256")
+    .update(`${kind}\0${proxyKey ?? "direct"}\0${value}`)
+    .digest("hex");
+}
+
+function pruneResultCache() {
+  const now = Date.now();
+  for (const [key, entry] of resultCache) {
+    if (entry.expiresAt <= now) resultCache.delete(key);
+  }
+  if (resultCache.size >= MAX_RESULT_CACHE_ENTRIES) {
+    resultCache.delete(resultCache.keys().next().value!);
+  }
+}
+
+function runQueued<T>(proxyKey: string | null, run: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    if (scrapeQueue.length >= MAX_QUEUED_SCRAPES) {
+      reject(new ScrapeBusyError("TikTok service queue is full; retry shortly."));
+      return;
+    }
+
+    const job: ScrapeJob<T> = { proxyKey, run, resolve, reject, timer: null };
+    job.timer = setTimeout(() => {
+      const index = scrapeQueue.indexOf(job);
+      if (index < 0) return;
+      scrapeQueue.splice(index, 1);
+      reject(new ScrapeBusyError("TikTok service is still busy; retry shortly."));
+      drainScrapeQueue();
+    }, MAX_QUEUE_WAIT_MS);
+    scrapeQueue.push(job);
+    drainScrapeQueue();
+  });
+}
+
+function drainScrapeQueue() {
+  while (activeScrapes < MAX_CONCURRENT_SCRAPES && scrapeQueue.length > 0) {
+    // Chromium can serve concurrent tabs only through one proxy at a time.
+    // Let same-proxy work share the browser, and switch routes only when idle.
+    const index = activeScrapes === 0
+      ? 0
+      : scrapeQueue.findIndex((job) => job.proxyKey === activeProxyKey);
+    if (index < 0) return;
+
+    if (activeScrapes > 0 && browserProxyKey !== activeProxyKey) return;
+
+    const job = scrapeQueue.splice(index, 1)[0];
+    if (job.timer) clearTimeout(job.timer);
+    if (activeScrapes === 0) activeProxyKey = job.proxyKey;
+    activeScrapes++;
+    void Promise.resolve()
+      .then(job.run)
+      .then(job.resolve, job.reject)
+      .finally(() => {
+        activeScrapes--;
+        if (activeScrapes === 0) activeProxyKey = undefined;
+        drainScrapeQueue();
+      });
+  }
+}
+
+function cachedScrape<T>(
+  key: string,
+  proxyKey: string | null,
+  cacheTtlMs: number,
+  run: () => Promise<T>,
+): Promise<T> {
+  const cached = resultCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.value as T);
+  if (cached) resultCache.delete(key);
+
+  const pending = inFlightScrapes.get(key);
+  if (pending) return pending as Promise<T>;
+
+  const task = runQueued(proxyKey, run).then((value) => {
+    if (cacheTtlMs > 0) {
+      pruneResultCache();
+      resultCache.set(key, { expiresAt: Date.now() + cacheTtlMs, value });
+    }
+    return value;
+  }).finally(() => {
+    if (inFlightScrapes.get(key) === task) inFlightScrapes.delete(key);
+  });
+  inFlightScrapes.set(key, task);
+  return task;
+}
+
 async function closeCurrentBrowser() {
   const browserTask = browserPromise;
   const proxyServer = browserProxyServer;
@@ -98,11 +214,7 @@ async function closeCurrentBrowser() {
 }
 
 async function getBrowser(proxyOverride?: string | null) {
-  const proxy = configuredProxy(
-    proxyOverride === undefined
-      ? (process.env.TIKTOK_PROXY || process.env.HTTPS_PROXY || null)
-      : proxyOverride,
-  );
+  const proxy = effectiveProxy(proxyOverride);
   const proxyKey = proxy;
 
   if (browserPromise && browserProxyKey !== proxyKey) {
@@ -150,18 +262,20 @@ async function getBrowser(proxyOverride?: string | null) {
         if (localProxy) void localProxy.close(true).catch(() => {});
       });
       return browser;
-    } catch {
+    } catch (error) {
+      console.error("[tiktok-browser] Chromium launch failed:", publicError(error, proxy));
       if (browserPromise === launchPromise) {
         browserPromise = null;
         browserProxyKey = undefined;
       }
       if (browserProxyServer === localProxy) browserProxyServer = null;
       if (localProxy) await localProxy.close(true).catch(() => {});
-      throw new Error("TikTok browser could not start with the configured network route.");
+      throw new Error("TikTok browser could not start. Check the browser service configuration.");
     }
   })();
   browserPromise = launchPromise;
   browserProxyKey = proxyKey;
+  queueMicrotask(drainScrapeQueue);
   return launchPromise;
 }
 
@@ -178,6 +292,7 @@ interface Comment {
 
 /** Parse a TikTok comment object from the API response. */
 function parseComment(c: any): Comment | null {
+  if (!c || typeof c !== "object") return null;
   const id = String(c.cid ?? c.id ?? c.comment_id ?? "");
   if (!id) return null;
   // Top-level comments: reply_comment is the parent object (if this is a reply).
@@ -221,6 +336,21 @@ async function fetchSearchResults(query: string, kind: SearchKind, proxyOverride
   const results: SearchResult[] = [];
   const seen = new Set<string>();
   const responseTasks = new Set<Promise<void>>();
+  const resultWaiters = new Set<() => void>();
+  const deadline = Date.now() + SEARCH_TIMEOUT_MS - 1000;
+  // TikTok can emit a zero-byte HTTP 200 before its signed search response.
+  // Wait for parsed results rather than assuming the page is ready after a sleep.
+  const waitForResults = (ready: () => boolean, timeoutMs: number) => {
+    if (ready() || Date.now() >= deadline) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      let timer: ReturnType<typeof setTimeout>;
+      const finish = () => { clearTimeout(timer); resultWaiters.delete(check); resolve(); };
+      const check = () => { if (ready()) finish(); };
+      timer = setTimeout(finish, Math.min(timeoutMs, Math.max(0, deadline - Date.now())));
+      resultWaiters.add(check);
+      check();
+    });
+  };
   let lastEndpoint: "general" | "item" | "user" | null = null;
 
   const merge = (found: SearchResult[]) => {
@@ -233,6 +363,7 @@ async function fetchSearchResults(query: string, kind: SearchKind, proxyOverride
       seen.add(key);
       results.push(result);
     }
+    for (const notify of resultWaiters) notify();
   };
 
   try {
@@ -284,7 +415,7 @@ async function fetchSearchResults(query: string, kind: SearchKind, proxyOverride
       document.cookie = `EU_COOKIE_CONSENT=1; ${opts}`;
     });
     await page.reload({ waitUntil: "domcontentloaded", timeout: 8_000 }).catch(() => {});
-    await new Promise((resolve) => setTimeout(resolve, 5_000));
+    await waitForResults(() => results.length > 0, 12_000);
 
     const hasAuthors = () => results.some((result) => result.kind === "author");
     if (kind === "author" || (kind === "all" && !hasAuthors())) {
@@ -293,7 +424,7 @@ async function fetchSearchResults(query: string, kind: SearchKind, proxyOverride
         const usersTab = controls.find((element) => /^(users?|accounts?|creators?)$/i.test((element.textContent || "").trim()));
         (usersTab as HTMLElement | undefined)?.click();
       }).catch(() => {});
-      await new Promise((resolve) => setTimeout(resolve, 3_000));
+      await waitForResults(hasAuthors, 5_000);
     }
     if (kind === "video" && results.length === 0) {
       await page.evaluate(() => {
@@ -301,13 +432,13 @@ async function fetchSearchResults(query: string, kind: SearchKind, proxyOverride
         const videosTab = controls.find((element) => /^videos?$/i.test((element.textContent || "").trim()));
         (videosTab as HTMLElement | undefined)?.click();
       }).catch(() => {});
-      await new Promise((resolve) => setTimeout(resolve, 2_000));
+      await waitForResults(() => results.length > 0, 5_000);
     }
     if (responseTasks.size) await Promise.allSettled([...responseTasks]);
 
     if (results.length === 0) {
       const pageText = await page.evaluate(() => document.body?.innerText ?? "").catch(() => "");
-      if (/captcha|verify to continue|unusual traffic|access denied|temporarily blocked/i.test(pageText)) {
+      if (/captcha|verify to continue|unusual traffic|access denied|temporarily blocked|drag the slider|fit the puzzle/i.test(pageText)) {
         throw new Error("TikTok blocked search. Check the configured proxy or try again later.");
       }
       // Retain endpoint evidence for diagnostics without returning browser content.
@@ -321,8 +452,105 @@ async function fetchSearchResults(query: string, kind: SearchKind, proxyOverride
   }
 }
 
-/** Extract comments for a TikTok video URL using a headless browser. */
+function limitCommentThreads(comments: Comment[], limit: number): Comment[] {
+  const sorted = [...comments].sort((a, b) => b.likeCount - a.likeCount);
+  const top = sorted.filter((comment) => !comment.parentId).slice(0, limit);
+  return top.flatMap((comment) => [comment, ...sorted.filter((reply) => reply.parentId === comment.id).slice(0, 10)]);
+}
+
+const execFileAsync = promisify(execFile);
+const COMMENTS_HTTP_SCRIPT = String.raw`
+import json, os
+from urllib.parse import urlparse
+from curl_cffi import requests
+video_url = os.environ["LIBCUT_COMMENT_VIDEO_URL"]
+video_id = urlparse(video_url).path.rstrip("/").split("/")[-1]
+proxy = os.environ.get("LIBCUT_COMMENT_PROXY") or None
+comment_id = os.environ.get("LIBCUT_COMMENT_PARENT")
+params = {"aid": "1988", "count": os.environ["LIBCUT_COMMENT_LIMIT"], "cursor": os.environ.get("LIBCUT_COMMENT_CURSOR", "0")}
+if comment_id:
+    endpoint = "https://www.tiktok.com/api/comment/list/reply/"
+    params.update({"item_id": video_id, "comment_id": comment_id})
+else:
+    endpoint = "https://www.tiktok.com/api/comment/list/"
+    params["aweme_id"] = video_id
+response = requests.get(
+    endpoint,
+    params=params,
+    proxy=proxy, impersonate="chrome", headers={"Referer": video_url},
+    timeout=6, allow_redirects=False,
+)
+response.raise_for_status()
+print(json.dumps(response.json(), ensure_ascii=False))
+`;
+
+async function loadHttpCommentData(videoUrl: string, limit: number, proxyOverride?: string | null, commentId = "", cursor = "0") {
+  const env = { ...process.env };
+  // Explicit direct mode must not inherit a different route from shell settings.
+  for (const name of ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]) delete env[name];
+  env.LIBCUT_COMMENT_VIDEO_URL = videoUrl;
+  env.LIBCUT_COMMENT_PROXY = effectiveProxy(proxyOverride) ?? "";
+  env.LIBCUT_COMMENT_LIMIT = String(Math.min(limit, 30));
+  env.LIBCUT_COMMENT_PARENT = commentId;
+  env.LIBCUT_COMMENT_CURSOR = cursor;
+  const { stdout } = await execFileAsync("python3", ["-c", COMMENTS_HTTP_SCRIPT], {
+      env, timeout: 7000, maxBuffer: 2 * 1024 * 1024, encoding: "utf8",
+  });
+  return JSON.parse(stdout);
+}
+
+/** Public JSON is often available even when the web player presents a CAPTCHA. */
+async function fetchHttpComments(videoUrl: string, limit: number, proxyOverride?: string | null): Promise<Comment[] | null> {
+  try {
+    const data = await loadHttpCommentData(videoUrl, limit, proxyOverride);
+    if (!data || Number(data.status_code) !== 0 || (!Array.isArray(data.comments) && data.comments !== null)) return null;
+    if (!data.comments?.length && Number(data.has_more) === 1) return null;
+    const comments = new Map<string, Comment>();
+    for (const raw of data.comments ?? []) {
+      const comment = parseComment(raw);
+      if (!comment) continue;
+      comments.set(comment.id, comment);
+      for (const reply of Array.isArray(raw.reply_comment) ? raw.reply_comment : []) {
+        const parsed = parseComment(reply);
+        if (parsed) comments.set(parsed.id, { ...parsed, parentId: comment.id });
+      }
+    }
+    if (data.comments?.length && !comments.size) return null;
+    return limitCommentThreads([...comments.values()], limit);
+  } catch {
+    // Missing optional Python support, empty bootstrap bodies, and upstream
+    // failures fall back to the browser without exposing proxy credentials.
+    return null;
+  }
+}
+
+async function fetchReplies(videoUrl: string, commentId: string, cursor: string, proxyOverride?: string | null) {
+  let data;
+  try {
+    data = await loadHttpCommentData(videoUrl, 20, proxyOverride, commentId, cursor);
+  } catch {
+    throw new Error("TikTok replies could not be loaded; retry shortly.");
+  }
+  if (!data || Number(data.status_code) !== 0 || (!Array.isArray(data.comments) && data.comments !== null)) {
+    throw new Error("TikTok returned an invalid replies response; retry shortly.");
+  }
+  const comments = new Map<string, Comment>();
+  for (const raw of data.comments ?? []) {
+    const reply = parseComment(raw);
+    if (reply) comments.set(reply.id, { ...reply, parentId: commentId });
+  }
+  const hasMore = data.has_more === true || Number(data.has_more) === 1;
+  const nextCursor = String(data.cursor ?? "");
+  if (hasMore && (!comments.size || !/^\d{1,10}$/.test(nextCursor) || Number(nextCursor) <= Number(cursor))) {
+    throw new Error("TikTok replies pagination is temporarily unavailable; retry shortly.");
+  }
+  return { comments: [...comments.values()], hasMore, nextCursor: hasMore ? nextCursor : null };
+}
+
+/** Prefer the public endpoint, then fall back to the hydrated TikTok player. */
 async function fetchComments(videoUrl: string, limit = 30, proxyOverride?: string | null): Promise<Comment[]> {
+  const direct = await fetchHttpComments(videoUrl, limit, proxyOverride);
+  if (direct !== null) return direct;
   const browser = await getBrowser(proxyOverride);
   const page = await browser.newPage();
   page.setDefaultNavigationTimeout(NAVIGATION_TIMEOUT_MS);
@@ -335,6 +563,9 @@ async function fetchComments(videoUrl: string, limit = 30, proxyOverride?: strin
   const seenIds = new Set<string>();
   let commentResponseCaptured = false;
   let commentResponseValid = false;
+  let signalCommentResponse!: () => void;
+  const commentResponseReady = new Promise<void>((resolve) => { signalCommentResponse = resolve; });
+  const responseTasks = new Set<Promise<void>>();
   const deadline = Date.now() + SCRAPE_TIMEOUT_MS;
   const checkDeadline = () => {
     if (Date.now() >= deadline) throw new Error("TikTok comments timed out; try again later.");
@@ -349,27 +580,43 @@ async function fetchComments(videoUrl: string, limit = 30, proxyOverride?: strin
     await page.setViewport({ width: 1440, height: 900 });
 
     // Intercept BOTH top-level and reply comment API responses.
-    page.on("response", async (res: any) => {
+    page.on("response", (res: any) => {
       const u = res.url();
       if (u.includes("/api/comment/list")) {
         commentResponseCaptured = true;
-        try {
-          const text = await res.text();
-          if (!text) return;
-          let json: any;
-          try { json = JSON.parse(text); } catch { return; }
-          if (!json || typeof json !== "object" || (json.status_code !== undefined && Number(json.status_code) !== 0) || (!Array.isArray(json.comments) && json.comments !== null)) return;
-          commentResponseValid = true;
-          const cs = json?.comments ?? [];
-          for (const c of cs) {
-            const parsed = parseComment(c);
-            if (!parsed || seenIds.has(parsed.id)) continue;
-            seenIds.add(parsed.id);
-            allComments.push(parsed);
+        const task = (async () => {
+          try {
+            const text = await res.text();
+            if (!text) return;
+            let json: any;
+            try { json = JSON.parse(text); } catch { return; }
+            if (!json || typeof json !== "object" || (json.status_code !== undefined && Number(json.status_code) !== 0) || (!Array.isArray(json.comments) && json.comments !== null)) return;
+            commentResponseValid = true;
+            const cs = json?.comments ?? [];
+            for (const c of cs) {
+              const parsed = parseComment(c);
+              if (!parsed || seenIds.has(parsed.id)) continue;
+              seenIds.add(parsed.id);
+              allComments.push(parsed);
+              // TikTok can include reply previews in the first response.
+              for (const reply of Array.isArray(c.reply_comment) ? c.reply_comment : []) {
+                const parsedReply = parseComment(reply);
+                if (!parsedReply || seenIds.has(parsedReply.id)) continue;
+                seenIds.add(parsedReply.id);
+                allComments.push({ ...parsedReply, parentId: parsed.id });
+              }
+            }
+            // An empty first batch may still have more pages; don't mistake it
+            // for a complete empty result when TikTok explicitly says more exist.
+            if (cs.length > 0 || json.has_more === false || Number(json.has_more) === 0 || json.has_more == null) {
+              signalCommentResponse();
+            }
+          } catch {
+            // response read error
           }
-        } catch {
-          // response read error
-        }
+        })();
+        responseTasks.add(task);
+        void task.finally(() => responseTasks.delete(task));
       }
     });
 
@@ -394,69 +641,58 @@ async function fetchComments(videoUrl: string, limit = 30, proxyOverride?: strin
       void request.continue().catch(() => {});
     });
 
-    // networkidle2 ensures the SPA is fully rendered (required for consent + comment icon).
-    checkDeadline();
-    await page.goto(videoUrl, { waitUntil: "networkidle2", timeout: 60_000 });
-    checkDeadline();
-    const initialText = await page.evaluate(() => document.body?.innerText ?? "");
-    if (/video (?:is )?(?:currently )?unavailable|couldn.t find this video|video has been (?:removed|deleted)/i.test(initialText)) {
-      throw new Error("This video is unavailable on TikTok in the server's region or has been removed.");
-    }
+    // Consent must be present on the initial request. Reloading immediately
+    // after DOMContentLoaded interrupts TikTok's still-hydrating application.
+    await browser.setCookie(...["tiktok_web_cookie_consent", "cookie-consent", "EU_COOKIE_CONSENT"].map((name) => ({
+      name, value: "1", domain: ".tiktok.com", path: "/", secure: true,
+      sameSite: "None", expires: Math.floor(Date.now() / 1000) + 31536000,
+    })));
 
-    // Accept GDPR consent by setting cookies, then reload to apply them.
-    // Reload with networkidle2 is required — without it, consent wall blocks the comment click.
-    await page.evaluate(() => {
-      const opts = "path=/; domain=.tiktok.com; max-age=31536000; SameSite=None; Secure";
-      document.cookie = `tiktok_web_cookie_consent=1; ${opts}`;
-      document.cookie = `cookie-consent=1; ${opts}`;
-      document.cookie = `EU_COOKIE_CONSENT=1; ${opts}`;
-    });
-    await page.reload({ waitUntil: "networkidle2", timeout: 60_000 });
-    checkDeadline();
-
-    // Click the comment icon — TikTok fires the signed comment API request.
-    const el = await page.$('[data-e2e="comment-icon"]');
-    if (el) {
-      await el.evaluate((e: any) => e.scrollIntoView({ block: "center" }));
-      await new Promise((r) => setTimeout(r, 200));
-      await el.click({ delay: 50 });
-    }
-
-    // Wait for the first batch of comments (up to 10s — be generous to avoid races).
-    for (let i = 0; i < 10 && allComments.length === 0; i++) {
-      await pause(1000);
-    }
-    // Extra settle time for async response handlers to finish parsing.
-    await pause(1500);
-
-    // Scroll the comment panel to render all comments + their "View replies" buttons.
-    for (let i = 0; i < 3; i++) {
-      await page.evaluate(() => {
-        const c = document.querySelector('[class*="CommentListContainer"], [data-e2e="comment-list"]');
-        if (c) (c as HTMLElement).scrollBy(0, 1500);
-      });
+    const remaining = (maximum: number) => {
       checkDeadline();
-      await pause(400);
-    }
-    await pause(500);
+      return Math.max(1, Math.min(maximum, deadline - Date.now() - 250));
+    };
+    const openComments = async () => {
+      if (commentResponseValid) return;
+      // DOMContentLoaded precedes React hydration. A one-shot page.$ silently
+      // misses the icon and never triggers TikTok's signed comment request.
+      const control = await Promise.race([
+        page.waitForSelector('[data-e2e="comment-icon"], [data-e2e="browse-comment-icon"]', {
+          visible: true, timeout: remaining(20_000),
+        }).catch(() => null),
+        commentResponseReady.then(() => null),
+      ]);
+      if (!commentResponseValid && control) {
+        await control.evaluate((element: any) => element.scrollIntoView({ block: "center" }));
+        await control.click({ delay: 50 });
+      }
+      if (!commentResponseValid) await Promise.race([commentResponseReady, pause(7000)]);
+      await Promise.allSettled([...responseTasks]);
+    };
 
-    // Click "View N replies" buttons by text content (TikTok has no data-e2e attr for these).
-    try {
-      const clicked = await page.evaluate(() => {
-        const all = Array.from(document.querySelectorAll("div, span, p, button"));
-        const replyBtns = all.filter((e) => {
-          const t = (e.textContent || "").trim().toLowerCase();
-          return /^(view\s+)?\d+\s+repl(y|ies)/.test(t) || t === "view replies";
-        });
-        let count = 0;
-        for (const b of replyBtns) {
-          try { (b as HTMLElement).click(); count++; } catch {}
-        }
-        return count;
-      });
-      // Wait for reply API responses.
-      await pause(2500);
-    } catch { /* ignore */ }
+    await page.goto(videoUrl, { waitUntil: "domcontentloaded", timeout: remaining(NAVIGATION_TIMEOUT_MS) });
+    await openComments();
+    if (!commentResponseValid && deadline - Date.now() > 12_000) {
+      // Recover once from an incomplete bootstrap; keep the first successful
+      // response fast and avoid clicking again when comments already arrived.
+      await page.reload({ waitUntil: "domcontentloaded", timeout: remaining(NAVIGATION_TIMEOUT_MS) });
+      await openComments();
+    }
+    checkDeadline();
+    if (!commentResponseValid) {
+      const pageText = await page.evaluate(() => document.body?.innerText ?? "");
+      if (/video (?:is )?(?:currently )?unavailable|couldn.t find this video|video has been (?:removed|deleted)/i.test(pageText)) {
+        throw new Error("This video is unavailable on TikTok in the server's region or has been removed.");
+      }
+      if (/captcha|verify to continue|unusual traffic|access denied|temporarily blocked|drag the slider|fit the puzzle/i.test(pageText)) {
+        throw new Error("TikTok blocked comments. Try again later or check the configured proxy.");
+      }
+    }
+
+    // Deliver the first available batch and included reply previews immediately.
+    // Extra scrolling and clicking every reply kept the viewer waiting even
+    // after useful comments had arrived.
+    await Promise.allSettled([...responseTasks]);
 
     checkDeadline();
     if (!commentResponseCaptured) {
@@ -466,23 +702,7 @@ async function fetchComments(videoUrl: string, limit = 30, proxyOverride?: strin
       throw new Error("TikTok returned an invalid comment API response; try again later.");
     }
 
-    // Sort top-level comments by likes (popularity) descending.
-    const topLevel = allComments
-      .filter((c) => !c.parentId)
-      .sort((a, b) => b.likeCount - a.likeCount);
-    const replies = allComments
-      .filter((c) => c.parentId)
-      .sort((a, b) => b.likeCount - a.likeCount);
-
-    // Build threaded result: top comments + their replies.
-    const result: Comment[] = [];
-    for (const top of topLevel.slice(0, limit)) {
-      result.push(top);
-      const topReplies = replies.filter((r) => r.parentId === top.id);
-      result.push(...topReplies.slice(0, 10));
-    }
-
-    return result;
+    return limitCommentThreads(allComments, limit);
   } catch (e: any) {
     throw e;
   } finally {
@@ -505,6 +725,36 @@ const server = createServer(async (req, res) => {
     }
     res.writeHead(200);
     return res.end(JSON.stringify({ ok: true }));
+  }
+  if (url.pathname === "/replies") {
+    if (req.method !== "GET") {
+      res.writeHead(405);
+      return res.end(JSON.stringify({ error: "method not allowed" }));
+    }
+    const videoUrl = validateVideoUrl(url.searchParams.get("videoUrl") ?? "");
+    const commentId = url.searchParams.get("commentId") ?? "";
+    const cursor = url.searchParams.get("cursor") ?? "0";
+    if (!videoUrl || !/^\d{1,30}$/.test(commentId) || !/^\d{1,10}$/.test(cursor)) {
+      res.writeHead(400);
+      return res.end(JSON.stringify({ error: "Invalid video, comment, or cursor" }));
+    }
+    let proxyOverride: string | null | undefined;
+    try { proxyOverride = requestProxyOverride(req); }
+    catch {
+      res.writeHead(400);
+      return res.end(JSON.stringify({ error: "Invalid proxy configuration" }));
+    }
+    try {
+      const proxyKey = effectiveProxy(proxyOverride);
+      const key = workKey("replies", proxyKey, `${videoUrl}\0${commentId}\0${cursor}`);
+      const result = await cachedScrape(key, proxyKey, 30_000, () => fetchReplies(videoUrl, commentId, cursor, proxyOverride));
+      res.writeHead(200);
+      return res.end(JSON.stringify(result));
+    } catch (error) {
+      if (error instanceof ScrapeBusyError) res.setHeader("Retry-After", "3");
+      res.writeHead(error instanceof ScrapeBusyError ? 503 : 502);
+      return res.end(JSON.stringify({ error: publicError(error, proxyOverride) }));
+    }
   }
   if (url.pathname === "/comments") {
     if (req.method !== "GET") {
@@ -531,10 +781,6 @@ const server = createServer(async (req, res) => {
       res.writeHead(400);
       return res.end(JSON.stringify({ error: "limit must be an integer from 1 to 100" }));
     }
-    if (activeScrapes >= MAX_CONCURRENT_SCRAPES) {
-      res.writeHead(429);
-      return res.end(JSON.stringify({ error: "comment service is busy; retry shortly" }));
-    }
     let proxyOverride: string | null | undefined;
     try {
       proxyOverride = requestProxyOverride(req);
@@ -542,16 +788,16 @@ const server = createServer(async (req, res) => {
       res.writeHead(400);
       return res.end(JSON.stringify({ error: e?.message ?? "invalid proxy configuration" }));
     }
-    activeScrapes++;
     try {
-      const comments = await fetchComments(validatedUrl, limit, proxyOverride);
+      const proxyKey = effectiveProxy(proxyOverride);
+      const key = workKey("comments", proxyKey, `${validatedUrl}\0${limit}`);
+      const comments = await cachedScrape(key, proxyKey, 0, () => fetchComments(validatedUrl, limit, proxyOverride));
       res.writeHead(200);
       return res.end(JSON.stringify({ comments }));
     } catch (e: any) {
-      res.writeHead(e instanceof ScrapeBusyError ? 429 : 502);
+      if (e instanceof ScrapeBusyError) res.setHeader("Retry-After", "3");
+      res.writeHead(e instanceof ScrapeBusyError ? 503 : 502);
       return res.end(JSON.stringify({ error: publicError(e, proxyOverride), comments: [] }));
-    } finally {
-      activeScrapes--;
     }
   }
   if (url.pathname === "/search") {
@@ -569,10 +815,6 @@ const server = createServer(async (req, res) => {
       res.writeHead(400);
       return res.end(JSON.stringify({ error: "kind must be all, author, or video", results: [] }));
     }
-    if (activeScrapes >= MAX_CONCURRENT_SCRAPES) {
-      res.writeHead(429);
-      return res.end(JSON.stringify({ error: "TikTok service is busy; retry shortly", results: [] }));
-    }
     let proxyOverride: string | null | undefined;
     try {
       proxyOverride = requestProxyOverride(req);
@@ -580,21 +822,41 @@ const server = createServer(async (req, res) => {
       res.writeHead(400);
       return res.end(JSON.stringify({ error: e?.message ?? "invalid proxy configuration", results: [] }));
     }
-    activeScrapes++;
     try {
-      const results = await fetchSearchResults(query, kindParam, proxyOverride);
+      const proxyKey = effectiveProxy(proxyOverride);
+      const key = workKey("search", proxyKey, `${kindParam}\0${query.toLowerCase()}`);
+      const results = await cachedScrape(key, proxyKey, SEARCH_CACHE_TTL_MS, () => fetchSearchResults(query, kindParam, proxyOverride));
       res.writeHead(200);
       return res.end(JSON.stringify({ results }));
     } catch (e: any) {
-      res.writeHead(e instanceof ScrapeBusyError ? 429 : 502);
+      if (e instanceof ScrapeBusyError) res.setHeader("Retry-After", "3");
+      res.writeHead(e instanceof ScrapeBusyError ? 503 : 502);
       return res.end(JSON.stringify({ error: publicError(e, proxyOverride), results: [] }));
-    } finally {
-      activeScrapes--;
     }
   }
   res.writeHead(404);
   res.end(JSON.stringify({ error: "not found" }));
 });
+
+// Close Chromium explicitly: Puppeteer's signal handlers otherwise keep the
+// HTTP server alive until the service manager's stop timeout expires.
+let shuttingDown = false;
+async function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  const forceExit = setTimeout(() => process.exit(1), 10_000);
+  forceExit.unref();
+  server.close();
+  server.closeAllConnections();
+  try {
+    await closeCurrentBrowser();
+  } finally {
+    clearTimeout(forceExit);
+    process.exit(0);
+  }
+}
+process.once("SIGTERM", () => { void shutdown(); });
+process.once("SIGINT", () => { void shutdown(); });
 
 server.listen(PORT, HOST, () => {
   console.log(`tiktok-comments service on http://${HOST}:${PORT}`);

@@ -11,11 +11,12 @@ import { cn } from "@/lib/utils";
 
 interface Props {
   video: VideoInfo;
+  queue?: VideoInfo[];
   showAuthor?: boolean;
   showSeen?: boolean;
 }
 
-export function VideoCard({ video, showAuthor = true, showSeen = false }: Props) {
+export function VideoCard({ video, queue, showAuthor = true, showSeen = false }: Props) {
   const openVideo = useView((s) => s.openVideo);
   const openAuthor = useView((s) => s.openAuthor);
   const t = useView((s) => s.t);
@@ -32,11 +33,11 @@ export function VideoCard({ video, showAuthor = true, showSeen = false }: Props)
     <Card
       role="button"
       tabIndex={0}
-      onClick={() => openVideo(video.id, video)}
+      onClick={() => openVideo(video.id, video, queue ?? [video])}
       onKeyDown={(e) => {
         if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
           e.preventDefault();
-          openVideo(video.id, video);
+          openVideo(video.id, video, queue ?? [video]);
         }
       }}
       className={cn(

@@ -505,7 +505,7 @@ export class YtDlpProvider implements TikTokProvider {
 
     // 2) Scrape the TikTok search page HTML (more reliable than yt-dlp search).
     try {
-      const scraped = await scrapeSearch(query);
+      const scraped = await scrapeSearch(query, kind);
       for (const s of scraped) {
         if (s.kind === "author" && wantAuthor) {
           if (!s.username || seenAuthors.has(s.username)) continue;

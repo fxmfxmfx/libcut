@@ -6,6 +6,7 @@ import { useState, type ReactNode } from "react";
 import { useSettings, useStatus } from "@/lib/tiktok/queries";
 import { useView, getLocalStorageError, localStorageErrorEvent, preferencesStorageKey, reportLocalStorageError } from "@/lib/tiktok/store";
 import { clientDataStorageKey, resetClientDataFromStorage, useClientData } from "@/lib/tiktok/client-data";
+import { audioStorageKey, useAudio } from "@/lib/tiktok/audio";
 import type { Lang } from "@/lib/tiktok/i18n";
 
 export function Providers({ children }: { children: ReactNode }) {
@@ -49,13 +50,14 @@ function SettingsSync() {
   const hydratePreferences = useView((s) => s.hydratePreferences);
 
   useEffect(() => {
+    useAudio.getState().hydrate();
     hydratePreferences();
     void useClientData.persist.rehydrate();
   }, [hydratePreferences]);
 
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
-      if (event.key !== null && event.key !== preferencesStorageKey && event.key !== clientDataStorageKey) return;
+      if (event.key !== null && event.key !== preferencesStorageKey && event.key !== clientDataStorageKey && event.key !== audioStorageKey) return;
       if (event.url) {
         try {
           if (new URL(event.url).origin !== window.location.origin) return;
@@ -76,6 +78,9 @@ function SettingsSync() {
       if (event.key === null) {
         resetClientDataFromStorage();
         hydratePreferences(true);
+        useAudio.getState().hydrate(true);
+      } else if (event.key === audioStorageKey) {
+        useAudio.getState().hydrate(true);
       } else if (event.key === clientDataStorageKey) {
         if (event.newValue === null) resetClientDataFromStorage();
         else void useClientData.persist.rehydrate();
