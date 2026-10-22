@@ -48,3 +48,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t libcut:check .
+      - name: Start and check the image
+        run: |
+          docker run -d --name libcut-check -e DEMO_MODE=true libcut:check
+          ready=0
+          for attempt in $(seq 1 30); do
+            if docker exec libcut-check node -e "fetch('http://127.0.0.1:3000/api/tiktok/status').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" -eq 1
+          docker exec libcut-check node --input-type=module -e '
+            const browser = await fetch("http://127.0.0.1:3040/health");
+            if (!browser.ok) throw new Error("Browser service is not healthy");
+            const feed = await (await fetch("http://127.0.0.1:3000/api/tiktok/feed")).json();
+            if (!feed.videos?.length) throw new Error("Demo feed is empty");
+            const response = await fetch(`http://127.0.0.1:3000/api/tiktok/videos/${feed.videos[0].id}/download`, { headers: { range: "bytes=0-31" } });
+            if (response.status !== 206 || (await response.arrayBuffer()).byteLength !== 32) throw new Error("Video download failed");
+            console.log("Container startup, both services, feed, and range download passed");
+          '
+      - name: Container logs
+        if: failure()
+        run: docker logs libcut-check || true
+      - name: Stop the image
+        if: always()
+        run: docker rm -f libcut-check || true

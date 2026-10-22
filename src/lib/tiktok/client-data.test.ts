@@ -131,7 +131,7 @@ describe("client data persistence and identity", () => {
     expect(useClientData.getState().favorites[0]?.thumbnailUrl).toStartWith("data:image/svg+xml,");
     expect(useClientData.getState().favorites[0]?.authorAvatarUrl).toStartWith("data:image/svg+xml,");
     expect(getUnreadableClientDataRaw()).toBeNull();
-    expect(getLocalStorageError()).toBeNull();
+    expect(getLocalStorageError("clientData")).toBeNull();
 
     const backup = exportClientBackup({ lang: "en", theme: "default", accent: "#fe2c55", customCss: "", autoMarkSeen: true });
     expect(validateClientBackup({ ...backup, favorites: [{ ...backup.favorites[0]!, url: "data:image/svg+xml,%3Csvg%3E" }] })).toBe(false);
@@ -180,7 +180,7 @@ describe("client data persistence and identity", () => {
 
     useClientData.getState().markSeen("db-id", "tt-id");
 
-    expect(getLocalStorageError()).toContain("Browser storage is unavailable");
+    expect(getLocalStorageError("clientData")).toContain("Browser storage is unavailable");
     expect(readFileSync(storagePath("libcut-client-data"), "utf8")).toBe(previous);
   });
 
@@ -195,7 +195,7 @@ describe("client data persistence and identity", () => {
 
     expect(getUnreadableClientDataRaw()).toBe(damaged);
     expect(useClientData.getState().subscriptions).toEqual([]);
-    expect(getLocalStorageError()).toContain("damaged");
+    expect(getLocalStorageError("clientData")).toContain("damaged");
   });
 
   it("rehydrates externally repaired bytes and clears the damaged-storage state", async () => {

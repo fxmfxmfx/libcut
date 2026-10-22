@@ -93,7 +93,7 @@ export function AuthorProfile({ username }: { username: string }) {
     if (dataMode === "client") {
       // Client mode: subscribe/unsubscribe via localStorage
       const clientSubs = useClientData.getState().subscriptions;
-      const isSubbed = clientSubs.some((s) => s.username === data.author.username);
+      const isSubbed = clientSubs.some((s) => s.username.toLowerCase() === data.author.username.toLowerCase());
       if (isSubbed) {
         useClientData.getState().unsubscribe(data.author.username);
         toast({ description: t("subs.unsubscribe") });
@@ -170,7 +170,7 @@ export function AuthorProfile({ username }: { username: string }) {
     : videos.some((v) => !v.seen);
   // In client mode, check subscription from localStorage.
   const isSubscribed = dataMode === "client"
-    ? clientSubs.some((s) => s.username === author?.username)
+    ? clientSubs.some((s) => s.username.toLowerCase() === author.username.toLowerCase())
     : author?.subscribed;
 
   return (

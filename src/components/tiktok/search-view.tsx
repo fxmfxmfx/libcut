@@ -139,7 +139,7 @@ function AuthorResultCard({
   // In client mode, check subscription from localStorage.
   const isSubscribed = username
     ? (dataMode === "client"
-      ? clientSubs.some((s) => s.username === username)
+      ? clientSubs.some((s) => s.username.toLowerCase() === username.toLowerCase())
       : subscribed)
     : false;
   if (!username) return null;

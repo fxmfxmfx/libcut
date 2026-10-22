@@ -145,7 +145,7 @@ describe("view preference persistence", () => {
     expect(useView.getState().accent).toBe("#fe2c55");
     expect(useView.getState().customCss).toBe("");
     expect(getUnreadablePreferencesRaw()).toBe(damaged);
-    expect(getLocalStorageError()).toContain("damaged or unsafe");
+    expect(getLocalStorageError("preferences")).toContain("damaged or unsafe");
 
     restorePreferences({ lang: "en", theme: "default", accent: "#fe2c55", customCss: "", autoMarkSeen: true });
   });
@@ -158,7 +158,7 @@ describe("view preference persistence", () => {
 
     useView.getState().setTheme("nord");
 
-    expect(getLocalStorageError()).toContain("Existing values were preserved");
+    expect(getLocalStorageError("preferences")).toContain("Existing values were preserved");
     expect(writes).toBe(beforeWrites);
     expect(readFileSync(storagePath("libcut-preferences-v1"), "utf8")).toBe("preserve this value");
     reportLocalStorageError("clientData", null);

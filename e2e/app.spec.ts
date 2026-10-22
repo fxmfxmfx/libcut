@@ -94,10 +94,13 @@ test("client tabs synchronize preferences and clearing without restoring removed
   await expect(other.locator("html")).toHaveAttribute("data-theme", "nord");
   const profile = await (await page.request.get("/api/tiktok/authors/city.cookhouse")).json();
   await page.evaluate((author) => localStorage.setItem("libcut-client-data", JSON.stringify({ version: 2, state: {
-    subscriptions: [{ username: author.username, displayName: author.displayName, avatarUrl: author.avatarUrl, description: author.description, followerCount: author.followerCount, subscribedAt: Date.now() }],
+    subscriptions: [{ username: author.username.toUpperCase(), displayName: author.displayName, avatarUrl: author.avatarUrl, description: author.description, followerCount: author.followerCount, subscribedAt: Date.now() }],
     favorites: [], seenVideoIds: [],
   } })), profile.author);
   await expect(other.locator('[role="button"]').filter({ has: other.locator(".video-portrait") }).first()).toBeVisible();
+  await other.getByRole("button", { name: "@city.cookhouse", exact: true }).first().click();
+  await expect(other.getByRole("button", { name: "Unsubscribe", exact: true })).toBeVisible();
+  await other.getByRole("button", { name: "Feed", exact: true }).click();
   await page.evaluate(() => localStorage.removeItem("libcut-client-data"));
   await expect(other.getByRole("button", { name: "Find creators", exact: true })).toBeVisible();
   expect(await other.evaluate(() => localStorage.getItem("libcut-client-data"))).toBeNull();
