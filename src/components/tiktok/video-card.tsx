@@ -52,6 +52,7 @@ export function VideoCard({ video, queue, showAuthor = true, showSeen = false }:
             src={video.thumbnailUrl}
             alt={video.title ?? "TikTok video"}
             loading="lazy"
+            decoding="async"
             className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
           />
         ) : (

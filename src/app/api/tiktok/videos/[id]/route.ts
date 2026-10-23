@@ -1,21 +1,34 @@
 import { requireLocalMode } from "@/lib/tiktok/access";
 import { canonicalVideoUrl } from "@/lib/tiktok/http";
-import { storeVideoMeta, withUpstreamSlot } from "@/lib/tiktok/library";
+import { storeVideoMeta, fetchVideoMetadata } from "@/lib/tiktok/library";
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { json, errorJson } from "@/lib/tiktok/http";
 import { ensureInitialized } from "@/lib/tiktok/init";
-import { tiktokProvider } from "@/lib/tiktok";
 import { tiktokConfig } from "@/lib/tiktok/config";
 import { proxyImage } from "@/lib/tiktok/images";
 
 export const dynamic = "force-dynamic";
 
+// Coalesce detail requests from the dialog, active card, and other clients.
+// Responses are cloned so each caller owns an independent body stream.
+const pendingDetails = new Map<string, Promise<Response>>();
+export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  const key = `${id}:${canonicalVideoUrl(req.nextUrl.searchParams.get("url") ?? "") ?? ""}`;
+  let pending = pendingDetails.get(key);
+  if (!pending) {
+    pending = loadVideo(req, ctx).finally(() => pendingDetails.delete(key));
+    pendingDetails.set(key, pending);
+  }
+  return (await pending).clone();
+}
+
 /**
  * GET /api/tiktok/videos/[id]
  * Video details + author + favorite state + playable source.
  */
-export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+async function loadVideo(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   await ensureInitialized();
   const { id } = await ctx.params;
   let v = await db.video.findFirst({
@@ -26,7 +39,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     const url = canonicalVideoUrl(_req.nextUrl.searchParams.get("url") ?? "");
     if (url && url.split("/").pop() === id) {
       try {
-        const row = await withUpstreamSlot(async () => storeVideoMeta(await tiktokProvider.getVideoMeta(url)));
+        const row = await storeVideoMeta(await fetchVideoMetadata(url));
         v = await db.video.findUnique({ where: { id: row.id }, include: { author: true, favorites: { select: { id: true } } } });
       } catch { return errorJson("Could not restore video from TikTok", 502); }
     }
@@ -44,7 +57,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 
   if (tiktokConfig.demoMode) {
     try {
-      const meta = await tiktokProvider.getVideoMeta(v.url);
+      const meta = await fetchVideoMetadata(v!.url);
       streamUrl = meta.streamUrl;
       if (meta.authorDisplayName && meta.authorDisplayName !== authorDisplayName) {
         authorDisplayName = meta.authorDisplayName;
@@ -60,7 +73,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   } else if (!v.metadataFetchedAt || Date.now() - v.metadataFetchedAt.getTime() > 60 * 60_000) {
     // Real mode: fetch meta once and cache streamUrl + author info + stats in DB.
     try {
-      const meta = await tiktokProvider.getVideoMeta(v.url);
+      const meta = await fetchVideoMetadata(v!.url);
       // Update video stats + gallery info in one query.
       const updateData: any = { metadataFetchedAt: new Date() };
       if (typeof meta.isGallery === "boolean") {
@@ -68,6 +81,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
         images = isGallery ? meta.images ?? images : null;
         updateData.isGallery = isGallery;
         updateData.images = images ? JSON.stringify(images) : null;
+        if (meta.isGallery && meta.audioUrl) updateData.streamUrl = meta.audioUrl;
       }
       if (meta.viewCount > 0) updateData.viewCount = meta.viewCount;
       if (meta.likeCount > 0) updateData.likeCount = meta.likeCount;
@@ -116,6 +130,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       images: images ? images.map(proxyImage) : null,
       isFavorited,
       streamSrc: `/api/tiktok/videos/${v.id}/stream`,
+      audioSrc: isGallery ? `/api/tiktok/videos/${v.id}/audio` : null,
       downloadSrc: `/api/tiktok/videos/${v.id}/download`,
     },
     author: {

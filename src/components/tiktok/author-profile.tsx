@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ArrowLeft, RefreshCw, Loader2, UserPlus, UserCheck, Users, Video as VideoIcon, CheckCheck, Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -36,6 +36,8 @@ export function AuthorProfile({ username }: { username: string }) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [olderOffset, setOlderOffset] = useState(0);
   const [noMoreOlder, setNoMoreOlder] = useState(false);
+  // Keep author captions available immediately, before detail refreshes finish.
+  const profileVideos = useMemo(() => data ? data.videos.map((video) => ({ ...video, author: data.author })) : [], [data]);
 
   async function handleCheck(offset = 0) {
     try {
@@ -288,7 +290,7 @@ export function AuthorProfile({ username }: { username: string }) {
           />
         ) : (
           <>
-            <VideoGrid videos={videos} showAuthor={false} showSeen />
+            <VideoGrid videos={profileVideos} showAuthor={false} showSeen />
             {/* Load older videos */}
             {!noMoreOlder && (
               <div className="flex justify-center pt-2">

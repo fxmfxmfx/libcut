@@ -17,6 +17,9 @@ export function serializeVideo(v: Video) {
     shareCount: v.shareCount, publishedAt: v.publishedAt,
     seen: tiktokConfig.dataMode === "local" && v.seen,
     isGallery: v.isGallery, images: Array.isArray(images) ? images.filter((url): url is string => typeof url === "string").map(proxyImage) : null,
+    streamSrc: `/api/tiktok/videos/${v.id}/stream`,
+    audioSrc: v.isGallery ? `/api/tiktok/videos/${v.id}/audio` : null,
+    downloadSrc: `/api/tiktok/videos/${v.id}/download`,
   };
 }
 
@@ -33,9 +36,15 @@ export function serializeAuthor(a: Author) {
 
 export async function storeVideos(authorId: string, videos: AuthorVideo[], seen = false) {
   let newVideos = 0;
+  const existing = videos.length > 0
+    ? await db.video.findMany({
+      where: { authorId, tiktokId: { in: [...new Set(videos.map((video) => video.tiktokId))] } },
+      select: { tiktokId: true },
+    })
+    : [];
+  const knownIds = new Set(existing.map((video) => video.tiktokId));
   for (const v of videos) {
     const where = { authorId_tiktokId: { authorId, tiktokId: v.tiktokId } };
-    const before = await db.video.findUnique({ where, select: { id: true } });
     const { images, isGallery } = v;
     // Search results carry extra author fields. Only model columns may reach
     // Prisma, even when callers pass a structural subtype of AuthorVideo.
@@ -61,7 +70,10 @@ export async function storeVideos(authorId: string, videos: AuthorVideo[], seen 
         duration: isGallery ? 0 : v.duration || undefined,
         ...(isGallery !== undefined ? { isGallery } : {}), ...(images?.length ? { images: JSON.stringify(images) } : {}) },
     });
-    if (!before) newVideos++;
+    if (!knownIds.has(v.tiktokId)) {
+      newVideos++;
+      knownIds.add(v.tiktokId);
+    }
   }
   return newVideos;
 }
@@ -79,6 +91,16 @@ export async function withUpstreamSlot<T>(task: () => Promise<T>): Promise<T> {
   } else active++;
   try { return await task(); }
   finally { const next = waiters.shift(); if (next) next(); else active--; }
+}
+
+// Gallery audio and video details often request the same hydrated page together.
+const metadataRequests = new Map<string, Promise<VideoMeta>>();
+export function fetchVideoMetadata(url: string): Promise<VideoMeta> {
+  const existing = metadataRequests.get(url);
+  if (existing) return existing;
+  const task = withUpstreamSlot(() => tiktokProvider.getVideoMeta(url)).finally(() => metadataRequests.delete(url));
+  metadataRequests.set(url, task);
+  return task;
 }
 
 export function checkAuthor(username: string, limit = 30, offset = 0): Promise<{ newVideos: number; totalChecked: number; authorId: string; offset: number }> {
@@ -118,7 +140,7 @@ export async function storeVideoMeta(meta: VideoMeta) {
     create: { username: meta.authorUsername.toLowerCase(), displayName: meta.authorDisplayName, avatarUrl: meta.authorAvatarUrl, subscribed: false },
     update: { displayName: meta.authorDisplayName, avatarUrl: meta.authorAvatarUrl },
   });
-  const { authorUsername, authorDisplayName, authorAvatarUrl, streamUrl, ...video } = meta;
+  const { authorUsername, authorDisplayName, authorAvatarUrl, streamUrl, audioUrl, ...video } = meta;
   await storeVideos(author.id, [video]);
-  return db.video.update({ where: { authorId_tiktokId: { authorId: author.id, tiktokId: video.tiktokId } }, data: { metadataFetchedAt: new Date() } });
+  return db.video.update({ where: { authorId_tiktokId: { authorId: author.id, tiktokId: video.tiktokId } }, data: { metadataFetchedAt: new Date(), ...(meta.isGallery && audioUrl ? { streamUrl: audioUrl } : {}) } });
 }

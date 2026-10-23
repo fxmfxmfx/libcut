@@ -4,8 +4,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { promises as fs } from "fs";
-import { Readable } from "node:stream";
+import { promises as fs, createReadStream } from "node:fs";
 import type { NextRequest } from "next/server";
 import { tiktokConfig } from "./config";
 import { tiktokProvider } from "./index";
@@ -105,14 +104,52 @@ async function streamFile(
   filePath: string,
   start?: number,
   end?: number,
+  signal?: AbortSignal,
 ): Promise<ReadableStream<Uint8Array>> {
-  const handle = await fs.open(filePath, "r");
-  const nodeStream = handle.createReadStream({
-    ...(start === undefined ? {} : { start }),
-    ...(end === undefined ? {} : { end }),
-    autoClose: true,
+  const file = createReadStream(filePath, {
+    start, end, highWaterMark: 64 * 1024, autoClose: true,
   });
-  return Readable.toWeb(nodeStream) as unknown as ReadableStream<Uint8Array>;
+  const chunks = file[Symbol.asyncIterator]();
+  let stopped = false;
+  let controller: ReadableStreamDefaultController<Uint8Array>;
+  function stop() {
+    stopped = true;
+    signal?.removeEventListener("abort", abort);
+    file.destroy();
+  }
+  function abort() {
+    if (stopped) return;
+    stop();
+    controller.close();
+  }
+  // Keep reads bounded and close the descriptor on disconnect, even when the
+  // HTTP adapter does not propagate cancellation to the response body.
+  return new ReadableStream<Uint8Array>({
+    start(output) {
+      controller = output;
+      if (signal?.aborted) abort();
+      else signal?.addEventListener("abort", abort, { once: true });
+    },
+    async pull(output) {
+      if (stopped) return;
+      try {
+        const chunk = await chunks.next();
+        if (stopped) return;
+        if (chunk.done) {
+          stop();
+          output.close();
+        } else {
+          output.enqueue(chunk.value);
+        }
+      } catch (error) {
+        if (!stopped) {
+          stop();
+          output.error(error);
+        }
+      }
+    },
+    cancel() { stop(); },
+  });
 }
 
 /**
@@ -145,7 +182,7 @@ export async function streamLocalFile(
     const range = parseRange(rangeHeader, size);
     if (!range) return rangeNotSatisfiable(size, baseHeaders);
     const length = range.end - range.start + 1;
-    return new Response(await streamFile(filePath, range.start, range.end), {
+    return new Response(req.method === "HEAD" ? null : await streamFile(filePath, range.start, range.end, req.signal), {
       status: 206,
       headers: {
         ...baseHeaders,
@@ -155,7 +192,7 @@ export async function streamLocalFile(
     });
   }
 
-  return new Response(await streamFile(filePath), {
+  return new Response(req.method === "HEAD" ? null : await streamFile(filePath, undefined, undefined, req.signal), {
     status: 200,
     headers: { ...baseHeaders, "Content-Length": String(size) },
   });

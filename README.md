@@ -66,7 +66,9 @@ Open **Feed** after subscribing to creators. Swipe up on a phone, scroll with a 
 
 Videos opened from search, favorites, or a creator profile use the same vertical player. Swipe through that collection; use the bottom slider to seek and the close button to return.
 
-Comments open over the feed and pause playback. Favorites, downloads, and watched toggles are available beside each video. Automatic watched marking happens during playback; it keeps the video in the current queue so you can scroll back. Watched videos leave the unread feed on the next visit. Local mode loads additional pages as you approach the end.
+Phone players show actions and captions over the video; tap the speaker button to reveal volume controls.
+
+Desktop comments open beside the player without dimming or pausing the video. On phones they open as a sheet and pause playback. Favorites, downloads, and watched toggles are available beside each video. Automatic watched marking happens during playback; it keeps the video in the current queue so you can scroll back. Watched videos leave the unread feed on the next visit. Local mode loads additional pages as you approach the end.
 
 ## Search and TikTok availability
 
@@ -130,11 +132,18 @@ Copy [.env.example](.env.example); keep `.env` and credentials out of Git.
 | `TIKTOK_CACHE_DIR` | Download cache directory |
 | `TIKTOK_CACHE_TTL_MIN` | Media retention, default 10 minutes; metadata remains |
 | `TIKTOK_SOCKET_TIMEOUT` / `TIKTOK_RETRIES` | yt-dlp network timeout and retries, defaults 30 / 3 |
+| `FFMPEG_PATH` | Audio processing executable, default `ffmpeg` |
 | `YTDLP_PATH` | yt-dlp executable, default `yt-dlp` |
 | `PUPPETEER_EXECUTABLE_PATH` | Chromium executable for the browser service |
 | `LIBCUT_BIND` | Compose host binding, default `127.0.0.1` |
 
-Appearance settings apply immediately. Custom CSS is limited to local styles; external resource URLs and `@import` are rejected.
+Theme, accent color, and custom CSS apply immediately and are stored only in this browser, in both data modes. Custom CSS is limited to local styles; external resource URLs and `@import` are rejected.
+
+## Playback and audio
+
+Volume, mute, and **Normalize audio** are saved in this browser. Normalization is disabled by default and can be enabled in Settings. Processing the entire audio track delays first playback, especially for long videos. FFmpeg levels audio toward −16 LUFS while copying the video stream; the original download is preserved. Processed files share the media cache lifetime. The first playback can take longer; subsequent requests reuse the processed file. One processing job runs at a time, with a bounded queue. Playback falls back to original audio if processing is unavailable.
+
+Feed and profile cards start loading their stream without waiting for a TikTok metadata refresh. Space or K toggles playback when the feed has focus.
 
 ## Checks and contributions
 

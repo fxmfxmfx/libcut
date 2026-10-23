@@ -66,6 +66,37 @@ describe("streamLocalFile", () => {
     }
   });
 
+  test("bounds chunks and safely cancels an in-flight read", async () => {
+    await writeFile(filePath, Buffer.alloc(1024 * 1024, 7));
+    const response = await streamLocalFile(filePath, request() as never);
+    const reader = response.body!.getReader();
+    const first = await reader.read();
+    expect(first.value?.byteLength).toBeLessThanOrEqual(64 * 1024);
+    const pendingRead = reader.read();
+    await reader.cancel();
+    await pendingRead;
+    expect((await reader.read()).done).toBe(true);
+  });
+
+  test("closes the stream when the request is aborted", async () => {
+    await writeFile(filePath, Buffer.alloc(1024 * 1024, 7));
+    const abort = new AbortController();
+    const req = new Request("http://localhost/video", { signal: abort.signal });
+    const response = await streamLocalFile(filePath, req as never);
+    const reader = response.body!.getReader();
+    await reader.read();
+    abort.abort();
+    while (!(await reader.read()).done) { /* drain at most the queued chunk */ }
+  });
+
+  test("HEAD returns range headers without opening a response body", async () => {
+    const req = new Request("http://localhost/video", { method: "HEAD", headers: { range: "bytes=2-5" } });
+    const response = await streamLocalFile(filePath, req as never);
+    expect(response.status).toBe(206);
+    expect(response.headers.get("Content-Length")).toBe("4");
+    expect(response.body).toBeNull();
+  });
+
   test("returns 404 when the local file is missing", async () => {
     const response = await streamLocalFile(join(directory, "missing.mp4"), request() as never);
     expect(response.status).toBe(404);

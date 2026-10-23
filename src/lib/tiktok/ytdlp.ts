@@ -397,6 +397,7 @@ export class YtDlpProvider implements TikTokProvider {
           publishedAt: scraped.publishedAt ?? null,
           isGallery: scraped.isGallery,
           images: scraped.images,
+          audioUrl: scraped.audioUrl ?? null,
           authorUsername: scraped.authorUsername ?? "",
           authorDisplayName: scraped.authorDisplayName ?? null,
           authorAvatarUrl: scraped.authorAvatarUrl ?? null,
@@ -428,6 +429,7 @@ export class YtDlpProvider implements TikTokProvider {
     else if (data.url) streamUrl = data.url;
     return {
       ...entry,
+      audioUrl: entry.isGallery ? (data.music?.play_url ?? data.music?.playUrl ?? null) : null,
       authorUsername,
       authorDisplayName,
       authorAvatarUrl,

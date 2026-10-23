@@ -39,7 +39,7 @@ export async function evictCached(videoId: string): Promise<void> {
   const v = await db.video.findUnique({ where: { id: videoId }, select: { cachedPath: true } });
   if (v?.cachedPath) {
     try {
-      await fs.unlink(v.cachedPath);
+      await Promise.all([fs.unlink(v.cachedPath).catch(() => {}), fs.unlink(v.cachedPath.replace(/\.mp4$/i, ".normalized.mp4")).catch(() => {})]);
     } catch {
       // file may already be gone
     }
@@ -61,7 +61,7 @@ export async function cleanupCacheOnce(): Promise<number> {
     stale.map(async (v) => {
       if (v.cachedPath) {
         try {
-          await fs.unlink(v.cachedPath);
+          await Promise.all([fs.unlink(v.cachedPath).catch(() => {}), fs.unlink(v.cachedPath.replace(/\.mp4$/i, ".normalized.mp4")).catch(() => {})]);
         } catch {
           // ignore
         }
@@ -78,11 +78,20 @@ export async function cleanupCacheOnce(): Promise<number> {
   // row. Keep a grace period longer than the maximum download timeout.
   const referenced = new Set((await db.video.findMany({
     where: { cachedPath: { not: null } }, select: { cachedPath: true },
-  })).map((v) => v.cachedPath));
+  })).flatMap((v) => v.cachedPath ? [v.cachedPath, v.cachedPath.replace(/\.mp4$/i, ".normalized.mp4")] : []));
   const orphanCutoff = Date.now() - Math.max(tiktokConfig.cacheTtlMs, 10 * 60_000);
   let orphans = 0;
   for (const entry of await fs.readdir(tiktokConfig.cacheDir, { withFileTypes: true })) {
-    if (!entry.isFile() || !/^[a-z0-9_-]+\.mp4(?:\.[a-f0-9-]+\.mp4)?$/i.test(entry.name)) continue;
+    if (entry.isFile() && /^[a-z0-9_-]+\.audio(?:\.[a-f0-9-]+\.tmp)?$/i.test(entry.name)) {
+      try {
+        if ((await fs.stat(path.join(tiktokConfig.cacheDir, entry.name)).then((stat) => stat.mtimeMs)) < orphanCutoff) {
+          await fs.unlink(path.join(tiktokConfig.cacheDir, entry.name));
+          orphans++;
+        }
+      } catch { /* a concurrent request or cleanup may already have removed it */ }
+      continue;
+    }
+    if (!entry.isFile() || !/^(?:[a-z0-9_-]+(?:\.normalized)?\.mp4(?:\.[a-f0-9-]+\.mp4)?|\.[a-z0-9_-]+\.normalized\.mp4\.[a-f0-9-]+\.tmp\.mp4)$/i.test(entry.name)) continue;
     const file = cachePathFor(entry.name.replace(/\.mp4$/, ""), "mp4");
     if (referenced.has(file)) continue;
     try {

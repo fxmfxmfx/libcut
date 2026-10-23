@@ -31,20 +31,11 @@ export function Providers({ children }: { children: ReactNode }) {
   );
 }
 
-/**
- * Pull server-side settings into the client store on load.
- * In client mode (DATA_MODE=client), appearance settings (language, theme,
- * accent, custom CSS) are NOT synced from the server DB — they stay in
- * localStorage only. This prevents settings from leaking between users on
- * public instances.
- */
+/** Hydrate browser preferences, then sync the shared data mode and local server settings. */
 function SettingsSync() {
   const { data: settingsData } = useSettings();
   const { data: statusData } = useStatus();
   const setLang = useView((s) => s.setLang);
-  const setTheme = useView((s) => s.setTheme);
-  const setAccent = useView((s) => s.setAccent);
-  const setCustomCss = useView((s) => s.setCustomCss);
   const setAutoMarkSeen = useView((s) => s.setAutoMarkSeen);
   const setDataMode = useView((s) => s.setDataMode);
   const hydratePreferences = useView((s) => s.hydratePreferences);
@@ -100,24 +91,21 @@ function SettingsSync() {
     }
   }, [statusData?.dataMode, setDataMode]);
 
-  // Only sync appearance settings from server DB in local mode.
-  // In client mode, these are localStorage-only.
+  // Theme, accent, and custom CSS always belong to this browser.
+  // Local instances still share language and automatic watched marking.
   useEffect(() => {
     // Do not let the settings query's initial/default data overwrite client
     // preferences before the status endpoint has identified this instance.
     if (!statusData || !settingsData) return;
-    // In client mode, don't touch appearance settings — they're in localStorage.
+    // Client instances keep all preferences in localStorage.
     if (statusData?.dataMode === "client") return;
 
     const s = settingsData.settings;
     if (s.language && (s.language === "en" || s.language === "ru")) {
       setLang(s.language as Lang);
     }
-    if (s.theme) setTheme(s.theme);
-    if (s.accent) setAccent(s.accent);
-    if (typeof s.customCss === "string") setCustomCss(s.customCss);
     setAutoMarkSeen(s.autoMarkSeen !== "false");
-  }, [settingsData, statusData?.dataMode, setLang, setTheme, setAccent, setCustomCss, setAutoMarkSeen]);
+  }, [settingsData, statusData?.dataMode, setLang, setAutoMarkSeen]);
 
   return null;
 }

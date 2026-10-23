@@ -1,51 +1,49 @@
 # Changelog
 
-## Unreleased
+## 2.0.0 — 2026-10-23
 
-- Load comment replies on demand with pagination, duplicate filtering, and independent retry controls.
+Version 2.0.0 is a major update to the player, browsing experience, client preferences, and media backend. Compared with the previous version, it adds a continuous swipe feed and shared player for video collections, improves TikTok search and comments, makes playback more responsive, and gives users more control over browser-local data and appearance.
 
-- Fetch public comments through the configured proxy before opening Chromium; wait for hydrated comment controls in the browser fallback and identify CAPTCHA failures explicitly.
+### Player and browsing
 
-- Use the vertical swipe player for search, favorites, and author videos, preserving the selected collection and adding seeking.
-- Put close author matches above search videos; show videos first for other searches.
-- Queue browser requests instead of immediately rejecting them as busy; return comments after the first valid batch and retain displayed comments during refresh.
+- Add a full-height vertical feed with touch swipes, native scroll snapping, keyboard controls, desktop navigation, stable queues, seeking, favorites, watched controls, downloads, and feed volume controls.
+- Use the same vertical player for feed, search results, favorites, and creator profiles. Keep only nearby pages mounted and one video decoder active; release media resources when leaving a post to reduce memory use on phones.
+- Redesign the phone player with full-height video, transparent lower actions and captions, a compact volume control, and a subtle bottom seek bar. Arrange desktop metadata and actions beside the video, with a thin seek bar along the bottom.
+- Keep desktop comments beside the player without dimming the screen or pausing video. Keep phone comments in a sheet. Move player controls outside the video rectangle so browser Picture-in-Picture overlays are less likely to cover them.
+- Replace instant photo changes with a horizontal gallery carousel featuring touch scrolling, desktop and keyboard controls, progress indicators, stable framing, bounded image loading, adjacent-photo preloading, and per-image retry.
+- Play gallery soundtracks when TikTok provides them. Cache audio through a proxy-backed endpoint, share saved volume and mute preferences, toggle music by tapping a photo, continue audio across slides, and stop it when leaving the post.
+- Start gallery playback toggles on touch release, distinguish taps from swipe gestures, and avoid duplicate pause/play cycles. Ignore stale playback promises after pausing or leaving a post.
+- Add Space/K playback shortcuts, delayed buffering feedback, and a small orange shield favicon.
 
-- Save shared volume and mute preferences in browser storage across page reloads, feed navigation, and individual video playback.
+### Search, comments, and TikTok data
 
-- Forward the selected search kind to the browser service so video searches cannot silently receive and discard author-only results.
-- Wait for actual search results after TikTok’s empty bootstrap responses, and treat empty upstream failures as query errors instead of caching them as successful results.
-- Run the browser service on Node.js to fix HTTP CONNECT failures under Bun; provide writable Chromium configuration/cache directories for systemd deployments and log sanitized launch errors.
-- Added an orange shield tab icon, sound enabled by default, and a shared feed volume control. Feed title and refresh controls now share the search toolbar.
+- Add local-library search alongside live TikTok search. Put exact or close creator matches before video results; otherwise show videos first. Forward the selected search type to the browser-backed search service.
+- Wait for real search results after TikTok's empty bootstrap responses, avoid caching upstream failures as successful empty searches, and provide retry for transient busy responses.
+- Fetch public comments through the configured proxy before using Chromium. Improve browser fallback readiness and CAPTCHA reporting; load comment replies on demand with pagination, duplicate filtering, and independent retry controls.
+- Queue browser-service requests, return comments after the first valid batch, and retain visible comments while refreshing. Bound concurrent scraping and search work.
+- Cache live search results and public video/creator metadata in the server database. Keep the viewing queue stable when watched state changes and load more local-feed pages with a stable cursor.
 
-- Added a vertical, full-height subscription feed with native scroll snapping, mobile swipes, keyboard navigation, and desktop controls.
-- Only the active video plays; comments and hidden tabs pause playback. Nearby videos are prepared without mounting players for the entire queue.
-- Added an in-feed comments sheet, favorites, watched toggles, sound controls, downloads, and horizontal photo navigation.
-- Keep the current viewing queue stable when videos become watched; local feeds load additional pages with a stable cursor.
+### Playback speed and reliability
 
-## 2.0.0 — 2026-10-22
+- Start media loading from feed, profile, and search cards while metadata refreshes. Coalesce concurrent detail requests, cap upstream metadata work, cancel abandoned client requests, and avoid redundant detail fetches after marking a video watched.
+- Warm the next video's server cache after the current media is ready without creating another video decoder. Skip warming on data-saving connections and keep playback on the same stream endpoint.
+- Add range-aware video streaming and downloads, including seeking and resumable byte ranges. Stream cached files in bounded chunks and handle cancelled requests without writing to closed streams.
+- Add optional per-browser audio normalization using FFmpeg. It is off by default; enabling it can delay first playback while the full audio track is processed. Cache processed audio, copy rather than re-encode video, bound processing concurrency and queue time, preserve original downloads, and fall back to original audio if processing fails.
+- Save volume and mute preferences across reloads, feed navigation, and individual video playback; enable sound by default.
+- Bound and coalesce TikTok/media work, improve proxy routing and error reporting, and run the browser service on Node.js to avoid Bun HTTP CONNECT issues. Provide writable Chromium configuration/cache directories for systemd deployments.
 
-Libcut 2.0 refreshes the client experience, improves media delivery, and updates the application dependency stack.
+### Client preferences, data, and interface
 
-### Added
+- Keep client-mode subscriptions, favorites, watched state, and preferences in browser storage; support versioned JSON backup export/import and stable TikTok video identity for saved items.
+- Migrate existing `libcut.*` browser preference keys and hydrate settings before applying them. Preserve malformed or blocked browser storage where possible and report errors instead of silently clearing data.
+- Store theme, accent color, and custom CSS in the current browser in both data modes, without reading or writing shared appearance settings. Reject external resource URLs and `@import` in custom CSS.
+- Keep feed title and refresh controls in the search toolbar. Improve phone controls, comments access, author links, and player interactions around browser Picture-in-Picture overlays.
 
-- Export and import a versioned JSON backup of client subscriptions, favorites, watched videos, and preferences. Client favorites retain optional video and gallery metadata.
-- Stable TikTok video identity for watched and favorite state, so those entries continue to match if a database row ID changes. Watched state can be updated in batches.
-- Immediate local-library search alongside live TikTok search. Live keyword search uses the browser-backed signing service; results and public video/author metadata are also cached in the server database.
-- Range-aware video playback and downloads, including seeking and resumable byte-range requests.
-- Mobile-friendly comments controls and a dedicated comments view in the video player.
+### Deployment, dependencies, and checks
 
-### Fixed and improved
+- Update Next.js, React, Prisma, Zustand, Puppeteer, and related dependencies; remove unused template packages; add type checks, regression tests, browser checks, and CI.
+- Replace the tracked `.env` template with `.env.example`; keep a private copy of an existing `.env` during upgrades.
+- Bind Compose to loopback by default and supervise both services. Restrict the optional Caddy configuration from accepting arbitrary upstream ports through query parameters.
+- Apply the Prisma schema to SQLite with `prisma db push` during Docker startup.
 
-- Client preferences, including automatic watched marking, hydrate before settings are applied and persist across reloads. Existing `libcut.*` browser preference keys are migrated without discarding their values.
-- Client-mode personal state remains in browser storage; malformed or blocked storage is reported and preserved where possible rather than silently cleared.
-- TikTok and media work now has bounded concurrency and request coalescing. The comments browser service also limits concurrent scrapes and search results.
-- TikTok proxy handling and comment/search extraction were revised for more reliable browser-backed requests.
-
-### Deployment and dependencies
-
-- Updated Next.js, React, Prisma, Zustand, Puppeteer, and related dependencies; removed unused template packages; added type checks, regression tests, browser checks, and CI.
-- Removed the tracked `.env` template in favor of `.env.example`; keep a private copy of an existing `.env` during upgrades.
-- Compose now binds to loopback by default and supervises both services. The optional Caddy configuration no longer accepts arbitrary upstream ports from query parameters.
-- Docker startup applies the Prisma schema to SQLite with `prisma db push` before starting the app.
-
-Live TikTok requests remain subject to TikTok availability, proxy behavior, and captcha or other upstream blocking. Demo-mode checks do not establish that live TikTok search or comments will work in every deployment. Client mode keeps personal state in localStorage but still uses the server database for shared public metadata and cache; the app does not claim hardened multi-user isolation.
+Live TikTok requests remain subject to TikTok availability, proxy behavior, CAPTCHA, and other upstream restrictions. Demo-mode checks do not establish that live search or comments will work in every deployment. Client mode keeps personal state in browser storage while public metadata and caches remain server-side; the app does not claim hardened multi-user isolation.

@@ -1,6 +1,7 @@
 "use client";
 
 import { Loader2, RefreshCw, ShieldOff } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useClientData } from "@/lib/tiktok/client-data";
 import { useRefresh, useSubscriptions } from "@/lib/tiktok/queries";
@@ -32,7 +33,7 @@ export function TopBar() {
   }
 
   return (
-    <header className="sticky top-0 z-30 shrink-0 border-b border-border/60 bg-background/90 backdrop-blur">
+    <header className={cn("sticky top-0 z-30 shrink-0 border-b border-border/60 bg-background/90 backdrop-blur", showFeedHeader && "max-md:hidden")}>
       <div className="flex min-w-0 items-center gap-3 px-4 py-3 md:px-6">
         <div className="flex items-center gap-2 md:hidden">
           {!showFeedHeader && <ShieldOff className="size-5 text-primary" />}

@@ -8,8 +8,8 @@ import {
 } from "@tanstack/react-query";
 
 const api = {
-  get: async <T>(url: string): Promise<T> => {
-    const r = await fetch(url);
+  get: async <T>(url: string, signal?: AbortSignal): Promise<T> => {
+    const r = await fetch(url, { signal });
     if (!r.ok) {
       const body = await r.json().catch(() => ({}));
       throw new Error(body.error || `HTTP ${r.status}`);
@@ -99,6 +99,7 @@ export interface VideoInfo {
   streamUrl?: string | null;
   isFavorited?: boolean;
   streamSrc?: string;
+  audioSrc?: string | null;
   downloadSrc?: string;
   favoritedAt?: string;
   isGallery?: boolean;
@@ -177,7 +178,7 @@ export function useFavorites() {
 export function useAuthor(username: string | null) {
   return useQuery({
     queryKey: ["author", username],
-    queryFn: () => api.get<{ author: AuthorInfo; videos: VideoInfo[]; refreshError?: string | null }>(`/api/tiktok/authors/${encodeURIComponent(username!)}`),
+    queryFn: ({ signal }) => api.get<{ author: AuthorInfo; videos: VideoInfo[]; refreshError?: string | null }>(`/api/tiktok/authors/${encodeURIComponent(username!)}`, signal),
     enabled: !!username,
   });
 }
@@ -188,12 +189,13 @@ export function useVideo(id: string | null, videoSource?: Pick<VideoInfo, "url" 
   const dataMode = useView((s) => s.dataMode);
   return useQuery({
     queryKey: ["video", id],
-    queryFn: () => {
+    staleTime: 60_000,
+    queryFn: ({ signal }) => {
       const favorite = dataMode === "client" ? useClientData.getState().favorites.find((f) => f.tiktokId === id || f.videoId === id) : undefined;
       const lookupId = favorite?.tiktokId ?? source?.tiktokId ?? id;
       const url = favorite?.url ?? source?.url;
       const suffix = url ? `?url=${encodeURIComponent(url)}` : "";
-      return api.get<{ video: VideoInfo; author: AuthorInfo }>(`/api/tiktok/videos/${lookupId}${suffix}`);
+      return api.get<{ video: VideoInfo; author: AuthorInfo }>(`/api/tiktok/videos/${lookupId}${suffix}`, signal);
     },
     enabled: !!id,
   });
@@ -202,8 +204,8 @@ export function useVideo(id: string | null, videoSource?: Pick<VideoInfo, "url" 
 export function useComments(id: string | null, enabled = true) {
   return useQuery({
     queryKey: ["comments", id],
-    queryFn: () => api.get<{ comments: CommentInfo[]; commentCount: number; error?: string }>(
-      `/api/tiktok/videos/${id}/comments`,
+    queryFn: ({ signal }) => api.get<{ comments: CommentInfo[]; commentCount: number; error?: string }>(
+      `/api/tiktok/videos/${id}/comments`, signal,
     ),
     enabled: !!id && enabled,
   });
@@ -331,7 +333,6 @@ export function useMarkSeen() {
       qc.invalidateQueries({ queryKey: ["subscriptions"] });
       qc.invalidateQueries({ queryKey: ["favorites"] });
       qc.invalidateQueries({ queryKey: ["search"] });
-      qc.invalidateQueries({ queryKey: ["video"] });
     },
   });
 }

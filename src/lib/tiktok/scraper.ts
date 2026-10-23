@@ -80,6 +80,17 @@ function findObjWithKeys(obj: any, keys: string[], depth = 0): any | null {
   return null;
 }
 
+/** Read TikTok soundtrack URLs from both common hydrated gallery shapes. */
+export function extractGalleryAudioUrl(itemStruct: any): string | null {
+  for (const music of [itemStruct?.music, itemStruct?.imagePost?.music]) {
+    const candidate = music?.playUrl ?? music?.play_url ?? music?.playUrlList?.[0] ?? music?.play_url_list?.[0];
+    if (typeof candidate === "string" && candidate.length > 0) return candidate;
+    const nested = candidate?.urlList?.[0] ?? candidate?.UrlList?.[0];
+    if (typeof nested === "string" && nested.length > 0) return nested;
+  }
+  return null;
+}
+
 /** Fetch a creator's full profile by scraping the channel page HTML. */
 export async function scrapeAuthorProfile(username: string): Promise<AuthorProfile | null> {
   const u = username.replace(/^@/, "");
@@ -120,6 +131,7 @@ export async function scrapeVideoMeta(videoUrl: string): Promise<Partial<VideoMe
   const stats = itemStruct.stats ?? {};
   const video = itemStruct.video ?? {};
   const imagePost = itemStruct.imagePost ?? {};
+  const audioUrl = extractGalleryAudioUrl(itemStruct);
   const imagesList = imagePost.images ?? [];
   const images = imagesList
     .map((img: any) => {
@@ -153,6 +165,7 @@ export async function scrapeVideoMeta(videoUrl: string): Promise<Partial<VideoMe
     publishedAt: itemStruct.createTime ? new Date(itemStruct.createTime * 1000) : null,
     isGallery: images.length > 0,
     images: images.length > 0 ? images : undefined,
+    audioUrl: typeof audioUrl === "string" ? audioUrl : null,
     authorUsername: author.uniqueId ?? "",
     authorDisplayName: author.nickname ?? null,
     authorAvatarUrl: author.avatarLarger ?? author.avatarMedium ?? null,

@@ -31,6 +31,8 @@ export interface AuthorVideo {
   isGallery?: boolean;
   /// Image URLs for a gallery post.
   images?: string[];
+  /// TikTok's soundtrack source for a photo carousel, when available.
+  audioUrl?: string | null;
 }
 
 export interface VideoMeta extends AuthorVideo {

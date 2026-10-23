@@ -13,8 +13,9 @@ export const dynamic = "force-dynamic";
  *
  * PATCH /api/tiktok/settings  body: { key: value, ... }
  * Upserts settings. Server-side keys: proxyEnabled, proxyUrl.
- * Client-side keys (language, theme, accent, customCss) are also stored here so
- * they sync across devices, but the client also keeps a localStorage mirror.
+ * Language and automatic watched marking remain shared on local instances.
+ * Theme, accent, and custom CSS are browser preferences; legacy appearance
+ * keys remain accepted for compatibility with older clients.
  */
 export async function GET() {
   if (tiktokConfig.dataMode === "client") return json({

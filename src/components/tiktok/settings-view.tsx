@@ -17,6 +17,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { useUpdateSettings } from "@/lib/tiktok/queries";
 import { useView } from "@/lib/tiktok/store";
+import { useAudio } from "@/lib/tiktok/audio";
 import { exportClientBackup, getUnreadableClientDataRaw, useClientData, validateClientBackup } from "@/lib/tiktok/client-data";
 import { useToast } from "@/hooks/use-toast";
 import { availableLangs, type Lang } from "@/lib/tiktok/i18n";
@@ -36,6 +37,8 @@ const ACCENTS = ["#fe2c55", "#25f4ee", "#a78bfa", "#34d399", "#fbbf24", "#60a5fa
 
 export function SettingsView() {
   const update = useUpdateSettings();
+  const normalizeAudio = useAudio((s) => s.normalizeAudio);
+  const setNormalizeAudio = useAudio((s) => s.setNormalizeAudio);
   const { t, setLang, setTheme, setAccent, setCustomCss, setAutoMarkSeen, lang, customCss: localCss, autoMarkSeen, theme, accent } = useView();
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -127,34 +130,28 @@ export function SettingsView() {
     }
   }
 
-  // In client mode, don't write to server DB — only update localStorage via store.
+  // Appearance always stays in this browser, including on local instances.
   function changeLang(l: string) {
     setLang(l as Lang);
     if (dataMode !== "client") update.mutate({ language: l });
   }
   function changeTheme(th: string) {
     setTheme(th);
-    if (dataMode !== "client") update.mutate({ theme: th });
   }
   function changeAccent(c: string) {
     setAccent(c);
-    if (dataMode !== "client") update.mutate({ accent: c });
   }
   function changeAutoMark(b: boolean) {
     setAutoMarkSeen(b);
     if (dataMode !== "client") update.mutate({ autoMarkSeen: String(b) });
   }
-  async function saveCss() {
+  function saveCss() {
     if (!isSafeCustomCss(customCss)) {
       toast({ variant: "destructive", description: copy.cssInvalid });
       return;
     }
     setCustomCss(customCss);
     setDraftCss(null);
-    if (dataMode !== "client") {
-      try { await update.mutateAsync({ customCss }); }
-      catch (error) { toast({ variant: "destructive", description: (error as Error).message }); return; }
-    }
     if (getLocalStorageError("preferences")) {
       toast({ variant: "destructive", description: getLocalStorageError("preferences")! });
       return;
@@ -290,6 +287,20 @@ export function SettingsView() {
             checked={autoMarkSeen}
             onCheckedChange={changeAutoMark}
           />
+        </div>
+
+        <Separator />
+
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-1">
+            <Label htmlFor="normalizeAudio" className="text-sm">
+              {lang === "ru" ? "Выравнивание громкости" : "Normalize audio"}
+            </Label>
+            <p className="max-w-lg text-xs text-muted-foreground">
+              {lang === "ru" ? "Уменьшает разницу громкости между роликами. Перед первым запуском сервер обрабатывает всю аудиодорожку — это занимает время и задерживает воспроизведение, особенно у длинных роликов. Сохраняется в этом браузере." : "Reduces volume differences between videos. The server processes the entire audio track before first playback, which takes time and delays playback, especially for longer videos. Saved in this browser."}
+            </p>
+          </div>
+          <Switch id="normalizeAudio" checked={normalizeAudio} onCheckedChange={setNormalizeAudio} />
         </div>
 
         <Separator />

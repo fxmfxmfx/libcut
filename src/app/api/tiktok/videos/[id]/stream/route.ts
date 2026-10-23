@@ -5,6 +5,8 @@ import { ensureInitialized } from "@/lib/tiktok/init";
 import { tiktokConfig } from "@/lib/tiktok/config";
 import { tiktokProvider } from "@/lib/tiktok";
 import { ensureLocalFile, streamLocalFile } from "@/lib/tiktok/stream";
+import { ensureNormalizedFile } from "@/lib/tiktok/normalize";
+import { cachePathFor } from "@/lib/tiktok/cache";
 import { demoLocalPathForUrl } from "@/lib/tiktok/demo";
 
 export const dynamic = "force-dynamic";
@@ -24,12 +26,28 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   });
   if (!v) return errorJson("video not found", 404);
 
+  async function playback(file: string) {
+    let audio = "original";
+    if (req.nextUrl.searchParams.get("normalize") === "1") {
+      try {
+        file = await ensureNormalizedFile(file, cachePathFor(id, "normalized.mp4"));
+        audio = "normalized";
+      } catch {
+        // Optional audio processing must not prevent video playback.
+        console.warn("[tiktok] Audio normalization unavailable; serving original audio");
+      }
+    }
+    const response = await streamLocalFile(file, req);
+    response.headers.set("X-Libcut-Audio", audio);
+    return response;
+  }
+
   // Demo mode: resolve the local sample file and stream it directly.
   if (tiktokConfig.demoMode) {
     try {
       const meta = await tiktokProvider.getVideoMeta(v.url);
       if (meta.streamUrl) {
-        return streamLocalFile(demoLocalPathForUrl(meta.streamUrl), req);
+        return await playback(demoLocalPathForUrl(meta.streamUrl));
       }
     } catch (e: any) {
       return errorJson(`stream failed: ${e?.message ?? String(e)}`, 502);
@@ -45,7 +63,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     return errorJson(`Could not fetch video: ${e?.message ?? String(e)}`, 502);
   }
   if (localPath) {
-    return streamLocalFile(localPath, req);
+    return playback(localPath);
   }
 
   return errorJson(
