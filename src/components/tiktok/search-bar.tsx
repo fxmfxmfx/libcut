@@ -6,7 +6,7 @@ import { useView } from "@/lib/tiktok/store";
 import { useState, useEffect } from "react";
 
 export function SearchBar() {
-  const { searchQuery, setSearch, setTab, t, lang, activeTab } = useView();
+  const { searchQuery, setSearch, setTab, t, activeTab } = useView();
   const [local, setLocal] = useState(searchQuery);
 
   const [previousQuery, setPreviousQuery] = useState(searchQuery);
@@ -55,7 +55,7 @@ export function SearchBar() {
             setSearch("");
           }}
           className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-          aria-label={lang === "ru" ? "Очистить поиск" : "Clear search"}
+          aria-label="Clear search"
         >
           <X className="size-4" />
         </button>

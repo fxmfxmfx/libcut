@@ -7,20 +7,12 @@ import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { useUpdateSettings } from "@/lib/tiktok/queries";
 import { useView } from "@/lib/tiktok/store";
 import { useAudio } from "@/lib/tiktok/audio";
 import { exportClientBackup, getUnreadableClientDataRaw, useClientData, validateClientBackup } from "@/lib/tiktok/client-data";
 import { useToast } from "@/hooks/use-toast";
-import { availableLangs, type Lang } from "@/lib/tiktok/i18n";
 import { useQueryClient } from "@tanstack/react-query";
 import { getLocalStorageError, getUnreadablePreferencesRaw, isSafeCustomCss, localStorageErrorEvent, restorePreferences } from "@/lib/tiktok/store";
 
@@ -39,7 +31,7 @@ export function SettingsView() {
   const update = useUpdateSettings();
   const normalizeAudio = useAudio((s) => s.normalizeAudio);
   const setNormalizeAudio = useAudio((s) => s.setNormalizeAudio);
-  const { t, setLang, setTheme, setAccent, setCustomCss, setAutoMarkSeen, lang, customCss: localCss, autoMarkSeen, theme, accent } = useView();
+  const { t, setTheme, setAccent, setCustomCss, setAutoMarkSeen, customCss: localCss, autoMarkSeen, theme, accent } = useView();
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -61,18 +53,7 @@ export function SettingsView() {
     return () => window.removeEventListener(localStorageErrorEvent, onStorageError);
   }, []);
 
-  const copy = lang === "ru" ? {
-    exportBackup: "Экспортировать резервную копию",
-    importBackup: "Импортировать резервную копию",
-    backupHint: "Резервная копия содержит подписки, избранное, просмотренные видео и настройки.",
-    importConfirm: "Заменить локальные подписки, избранное, просмотры и настройки данными из этой резервной копии?",
-    backupInvalid: "Неверный файл резервной копии или неподдерживаемая версия.",
-    backupDone: "Резервная копия импортирована.",
-    exportRecovery: "Экспортировать повреждённые данные",
-    cssInvalid: "CSS содержит неподдерживаемые внешние ресурсы или превышает 50 КБ.",
-    storageError: "Браузерное хранилище недоступно. Изменения могут не сохраниться после перезагрузки.",
-    clearFailed: "Не удалось очистить данные.",
-  } : {
+  const copy = {
     exportBackup: "Export backup",
     importBackup: "Import backup",
     backupHint: "The backup includes subscriptions, favorites, seen videos, and preferences.",
@@ -86,7 +67,7 @@ export function SettingsView() {
   };
 
   function downloadBackup() {
-    const backup = exportClientBackup({ lang, theme, accent, customCss: localCss, autoMarkSeen });
+    const backup = exportClientBackup({ lang: "en", theme, accent, customCss: localCss, autoMarkSeen });
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -131,10 +112,6 @@ export function SettingsView() {
   }
 
   // Appearance always stays in this browser, including on local instances.
-  function changeLang(l: string) {
-    setLang(l as Lang);
-    if (dataMode !== "client") update.mutate({ language: l });
-  }
   function changeTheme(th: string) {
     setTheme(th);
   }
@@ -237,26 +214,6 @@ export function SettingsView() {
         <Separator />
 
         <div>
-          <Label htmlFor="lang" className="text-sm font-semibold">
-            {t("settings.language")}
-          </Label>
-          <Select value={lang} onValueChange={changeLang}>
-            <SelectTrigger id="lang" className="mt-1.5 w-full sm:w-48">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {availableLangs.map((l) => (
-                <SelectItem key={l.value} value={l.value}>
-                  {l.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <Separator />
-
-        <div>
           <Label htmlFor="css" className="text-sm font-semibold">
             {t("settings.customCss")}
           </Label>
@@ -294,10 +251,10 @@ export function SettingsView() {
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">
             <Label htmlFor="normalizeAudio" className="text-sm">
-              {lang === "ru" ? "Выравнивание громкости" : "Normalize audio"}
+              Normalize audio
             </Label>
             <p className="max-w-lg text-xs text-muted-foreground">
-              {lang === "ru" ? "Уменьшает разницу громкости между роликами. Перед первым запуском сервер обрабатывает всю аудиодорожку — это занимает время и задерживает воспроизведение, особенно у длинных роликов. Сохраняется в этом браузере." : "Reduces volume differences between videos. The server processes the entire audio track before first playback, which takes time and delays playback, especially for longer videos. Saved in this browser."}
+              Reduces volume differences between videos. The server processes the entire audio track before first playback, which takes time and delays playback, especially for longer videos. Saved in this browser.
             </p>
           </div>
           <Switch id="normalizeAudio" checked={normalizeAudio} onCheckedChange={setNormalizeAudio} />

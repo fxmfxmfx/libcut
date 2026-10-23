@@ -69,7 +69,7 @@ describe("view preference persistence", () => {
 
     useView.getState().hydratePreferences();
 
-    expect(useView.getState().lang).toBe("ru");
+    expect(useView.getState().lang).toBe("en");
     expect(useView.getState().theme).toBe("nord");
     expect(useView.getState().accent).toBe("#abc123");
     expect(useView.getState().customCss).toBe("body { color: red; }");
@@ -80,7 +80,6 @@ describe("view preference persistence", () => {
 
   it("persists and rehydrates autoMarkSeen with the other client preferences", () => {
     useView.getState().hydratePreferences();
-    useView.getState().setLang("ru");
     useView.getState().setTheme("dracula");
     useView.getState().setAccent("#123456");
     useView.getState().setCustomCss(".test { color: blue; }");
@@ -89,7 +88,7 @@ describe("view preference persistence", () => {
     useView.setState({ preferencesReady: false, lang: "en", theme: "default", accent: "#fe2c55", customCss: "", autoMarkSeen: true });
     useView.getState().hydratePreferences();
 
-    expect(useView.getState().lang).toBe("ru");
+    expect(useView.getState().lang).toBe("en");
     expect(useView.getState().theme).toBe("dracula");
     expect(useView.getState().accent).toBe("#123456");
     expect(useView.getState().customCss).toBe(".test { color: blue; }");
@@ -103,7 +102,7 @@ describe("view preference persistence", () => {
 
     useView.getState().hydratePreferences(true);
 
-    expect(useView.getState().lang).toBe("ru");
+    expect(useView.getState().lang).toBe("en");
     expect(useView.getState().theme).toBe("nord");
     expect(useView.getState().autoMarkSeen).toBe(false);
     localStorageMock.removeItem("libcut-preferences-v1");

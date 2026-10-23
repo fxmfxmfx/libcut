@@ -1,22 +1,22 @@
 # Docker: libcut 2.0
 
-Полная инструкция находится в [README.ru.md](README.ru.md). Для существующей установки сначала прочитайте [переход на 2.0](docs/UPGRADING-2.0.md) и сохраните копию базы.
+The complete guide is in [README.md](README.md). For an existing installation, first read [Upgrading to 2.0](docs/UPGRADING-2.0.md) and save a database backup.
 
 ```sh
 cp .env.example .env
-# Настройте DATA_MODE, DEMO_MODE и TIKTOK_PROXY в .env.
+# Configure DATA_MODE, DEMO_MODE, and TIKTOK_PROXY in .env.
 docker compose up -d --build
 docker compose logs -f libcut
 ```
 
-По умолчанию сайт доступен только на `http://127.0.0.1:3000`, показаны demo-данные. Для live-данных задайте `DEMO_MODE=false` и рабочий прокси. Для доверенной LAN задайте `LIBCUT_BIND`; встроенной авторизации нет.
+By default, the site is available only at `http://127.0.0.1:3000` and displays demo data. For live data, set `DEMO_MODE=false` and configure a working proxy. For a trusted LAN, set `LIBCUT_BIND`; built-in authentication is not available.
 
-- SQLite хранится в томе `libcut-db`, медиа-кэш — в `libcut-cache`.
-- Compose задаёт абсолютные пути `/app/db/custom.db` и `/app/cache/videos`; локальные пути из `.env` внутри контейнера не используются.
-- Chromium, yt-dlp, curl_cffi и ffmpeg входят в образ. Браузерный сервис слушает только `127.0.0.1:3040`.
-- Перед запуском выполняется безопасное для совместимого обновления схемы `prisma db push --skip-generate`. При ошибке схемы запуск прекращается.
-- Состояние контейнера проверяется через `/api/tiktok/status`.
-- Для прокси на хосте используйте `host.docker.internal`, для отдельного прокси-контейнера — его сетевое имя. `127.0.0.1` внутри контейнера означает сам контейнер.
+- SQLite is stored in the `libcut-db` volume; the media cache is stored in `libcut-cache`.
+- Compose sets the absolute paths `/app/db/custom.db` and `/app/cache/videos`; local paths from `.env` are not used inside the container.
+- Chromium, yt-dlp, curl_cffi, and ffmpeg are included in the image. The browser service listens only on `127.0.0.1:3040`.
+- Before startup, `prisma db push --skip-generate` safely applies compatible schema updates. Startup stops if the schema update fails.
+- Check container status at `/api/tiktok/status`.
+- For a proxy running on the host, use `host.docker.internal`; for a separate proxy container, use its network name. `127.0.0.1` inside a container refers to that container itself.
 
 ```sh
 docker compose ps
@@ -24,6 +24,6 @@ docker compose restart libcut
 docker compose down
 ```
 
-`docker compose down` сохраняет тома. **`docker compose down -v` удаляет базу и кэш.** Не запускайте эту команду для обычного обновления.
+`docker compose down` preserves volumes. **`docker compose down -v` deletes the database and cache.** Do not run this command for a routine update.
 
-В client режиме личные данные остаются в localStorage браузера; общие метаданные и комментарии всё равно хранятся на сервере. Экспортируйте JSON-копию через настройки перед переносом на другой домен или очисткой браузера. Прокси, captcha и ограничения TikTok могут влиять на поиск и комментарии независимо от работоспособности контейнера.
+In client mode, personal data remains in the browser's localStorage; shared metadata and comments are still stored on the server. Export a JSON backup through Settings before moving to another domain or clearing browser data. Proxies, captchas, and TikTok restrictions can affect search and comments regardless of whether the container is running correctly.

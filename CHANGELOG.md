@@ -34,6 +34,7 @@ Version 2.0.0 is a major update to the player, browsing experience, client prefe
 
 ### Client preferences, data, and interface
 
+- Use English throughout the interface and repository documentation. Remove the language switcher, and normalize legacy Russian locale preferences to English without discarding other saved settings.
 - Keep client-mode subscriptions, favorites, watched state, and preferences in browser storage; support versioned JSON backup export/import and stable TikTok video identity for saved items.
 - Migrate existing `libcut.*` browser preference keys and hydrate settings before applying them. Preserve malformed or blocked browser storage where possible and report errors instead of silently clearing data.
 - Store theme, accent color, and custom CSS in the current browser in both data modes, without reading or writing shared appearance settings. Reject external resource URLs and `@import` in custom CSS.

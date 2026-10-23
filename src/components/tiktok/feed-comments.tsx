@@ -65,9 +65,7 @@ export function FeedComments({ video, onClose, inline = false }: FeedCommentsPro
   const errorMessage = refreshError || comments.error?.message || comments.data?.error;
   const hasComments = (comments.data?.comments?.length ?? 0) > 0;
   const isLoading = !hasComments && (comments.isLoading || refreshing);
-  const videoDescription = video.title || video.description || (
-    lang === "ru" ? "Комментарии к видео из ленты" : "Comments for this feed video"
-  );
+  const videoDescription = video.title || video.description || "Comments for this feed video";
 
   const content = (
     <>
@@ -103,7 +101,7 @@ export function FeedComments({ video, onClose, inline = false }: FeedCommentsPro
             type="button"
             size="icon"
             variant="ghost"
-            aria-label={lang === "ru" ? "Обновить комментарии" : "Refresh comments"}
+            aria-label="Refresh comments"
             onClick={refreshComments}
             disabled={isLoading || comments.isFetching}
           >

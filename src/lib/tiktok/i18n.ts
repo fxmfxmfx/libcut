@@ -1,7 +1,6 @@
 /**
- * Lightweight i18n (EN / RU). Default language is English.
- * Strings are looked up via `t(key)`; the active language lives in a Zustand
- * store (synced to the DB setting + localStorage).
+ * English interface strings. Legacy locale preferences are accepted during
+ * migration and normalized to English.
  */
 
 export type Lang = "en" | "ru";
@@ -150,7 +149,6 @@ const en: Dict = {
 
   // Settings
   "settings.title": "Settings",
-  "settings.language": "Language",
   "settings.theme": "Theme",
   "settings.accent": "Accent color",
   "settings.customCss": "Custom CSS",
@@ -213,198 +211,8 @@ const en: Dict = {
   "common.confirm": "Confirm",
 };
 
-const ru: Dict = {
-  "player.seek": "Перемотка видео",
-  "feed.previousPhoto": "Предыдущее фото",
-  "feed.nextPhoto": "Следующее фото",
-  "feed.swipe": "Листайте вверх — следующее видео",
-  "feed.sessionEnd": "Вы посмотрели все доступные видео",
-  "feed.backToTop": "К первому видео",
-  "feed.previous": "Предыдущее видео",
-  "feed.next": "Следующее видео",
-  "feed.mute": "Выключить звук",
-  "feed.unmute": "Включить звук",
-  "feed.play": "Воспроизвести видео",
-  "feed.pause": "Приостановить видео",
-  "feed.photo": "Фото",
-  "feed.loading": "Загружаем видео…",
-  "feed.views": "просмотров",
-
-  "status.proxyConfigured": "Прокси настроен",
-  "common.retry": "Повторить",
-  "player.video": "Видео",
-  "feed.partial": "Не удалось обновить подписки: {n}. Показаны доступные видео.",
-  "nav.feed": "Лента",
-  "nav.subscriptions": "Подписки",
-  "nav.favorites": "Избранное",
-  "nav.search": "Поиск",
-  "nav.settings": "Настройки",
-
-  "search.placeholder": "@ник, слова или ссылка TikTok…",
-  "search.authors": "Авторы",
-  "search.videos": "Видео",
-  "search.all": "Всё",
-  "search.start": "Начните искать",
-  "search.start.desc": "Введите @username или ключевые слова в строку поиска сверху. Результаты ищутся и в вашей библиотеке, и напрямую в TikTok.",
-  "search.loading": "Поиск…",
-  "search.notFound.authors": "Авторы не найдены.",
-  "search.notFound.videos": "Видео не найдены.",
-  "search.inLibrary": "В библиотеке",
-  "search.onTikTok": "TikTok",
-
-  "feed.title": "Лента",
-  "feed.desc": "Новые видео от ваших подписок, которые вы ещё не видели",
-  "feed.check": "Проверить новые",
-  "feed.checking": "Проверяем новые видео у ваших подписок…",
-  "feed.found": "Найдено {n} новых видео",
-  "feed.empty.title": "Нет новых видео",
-  "feed.empty.desc": "Вы просмотрели всё доступное. Нажмите «Проверить новые», чтобы обновить ленту.",
-  "feed.empty.nosub.title": "Лента пуста",
-  "feed.empty.nosub.desc": "Подпишитесь на авторов TikTok, чтобы их новые видео появлялись здесь. Лента показывает только непросмотренные видео.",
-  "feed.empty.nosub.cta": "Найти авторов",
-
-  "subs.title": "Подписки",
-  "subs.desc": "Управляйте авторами, на которых вы подписаны",
-  "subs.subscribe": "Подписаться",
-  "subs.unsubscribe": "Отписаться",
-  "subs.empty.title": "Нет подписок",
-  "subs.empty.desc": "Добавьте авторов TikTok по @username — их последние видео сохранятся локально, и новые будут появляться в ленте.",
-  "subs.unseen": "нов.",
-  "subs.unwatched": "непросм.",
-  "subs.stored": "видео",
-
-  "sub.dialog.title": "Подписаться на автора",
-  "sub.dialog.desc": "Введите @username из TikTok. Мы загрузим профиль и последние видео через yt-dlp (через SOCKS5-прокси) и сохраним их локально.",
-  "sub.dialog.username": "Имя пользователя",
-  "sub.dialog.placeholder": "@username",
-  "sub.dialog.cancel": "Отмена",
-  "sub.dialog.ok": "Подписаться",
-  "sub.dialog.success": "Подписка оформлена",
-  "sub.dialog.success.desc": "@{user} · {n} видео добавлено",
-  "sub.dialog.fail": "Не удалось подписаться",
-  "sub.dialog.fail.desc": "Проверьте имя пользователя и прокси",
-
-  "fav.title": "Избранное",
-  "fav.desc": "Видео, которые вы сохранили",
-  "fav.empty.title": "В избранном пусто",
-  "fav.empty.desc": "Откройте любое видео и нажмите «В избранное», чтобы сохранить его здесь. Избранное хранится в вашей локальной базе.",
-  "fav.empty.cta": "Перейти в ленту",
-
-  "author.followers": "подписчиков",
-  "author.following": "подписок",
-  "author.likes": "лайков",
-  "author.videos": "видео",
-  "author.updated": "обновлено {ago}",
-  "author.check": "Проверить новые",
-  "author.loadOlder": "Загрузить старые видео",
-  "author.markAllSeen": "Отметить все просмотренными",
-  "author.markAllSeen.done": "Отмечено {n} видео как просмотренные",
-  "author.openOriginal": "Открыть в TikTok",
-  "author.back": "Назад",
-  "author.notFound.title": "Автор не найден",
-  "author.notFound.desc": "Этого автора нет в вашей библиотеке. Подпишитесь, чтобы загрузить его профиль.",
-  "author.notFound.cta": "Загрузить профиль",
-  "author.notSubscribed": "не подписан",
-  "author.subscribed": "Вы подписаны",
-
-  "ext.warn.title": "Выход из libcut",
-  "ext.warn.desc": "Это откроет настоящий сайт TikTok с трекингом и рекламой. Продолжить?",
-  "ext.warn.continue": "Перейти в TikTok",
-  "ext.warn.cancel": "Остаться здесь",
-
-  "video.watched": "Просмотрено",
-  "video.new": "Новое",
-  "video.untitled": "Без названия",
-
-  "player.original": "Оригинал",
-  "player.favorite": "В избранное",
-  "player.favorited": "В избранном",
-  "player.download": "Скачать",
-  "player.download.start": "Загрузка началась",
-  "player.download.desc": "Видео скачивается на ваш компьютер.",
-  "player.markWatched": "Отметить просмотренным",
-  "player.markNew": "Отметить новым",
-  "player.comments": "Комментарии",
-  "player.comments.load": "Загрузить комментарии",
-  "player.comments.loading": "Загрузка комментариев…",
-  "player.comments.refresh": "Обновить",
-  "player.comments.empty": "Пока нет комментариев",
-  "player.comments.fail": "Не удалось загрузить комментарии: {err}",
-  "player.replies.empty": "Ответы больше недоступны",
-  "player.replies.hide": "Скрыть ответы",
-  "player.replies.view": "Показать ответы ({n})",
-  "player.replies.more": "Показать ещё ответы",
-  "player.replies.retry": "Повторить загрузку ответов",
-  "player.replies.fail": "Не удалось загрузить ответы: {err}",
-  "player.close": "Закрыть",
-  "player.volume": "Громкость",
-  "player.slides": "Слайд {n} из {total}",
-  "player.next": "Далее",
-  "player.prev": "Назад",
-  "player.failed": "Не удалось загрузить видео",
-
-  "settings.title": "Настройки",
-  "settings.language": "Язык",
-  "settings.theme": "Тема",
-  "settings.accent": "Акцентный цвет",
-  "settings.customCss": "Кастомный CSS",
-  "settings.customCss.placeholder": "/* Добавьте свой CSS здесь */\n:root { /* … */ }",
-  "settings.proxy": "Прокси",
-  "settings.proxy.enabled": "Использовать прокси",
-  "settings.proxy.url": "URL SOCKS5-прокси",
-  "settings.proxy.url.placeholder": "socks5://user:pass@host:1080",
-  "settings.proxy.desc": "Весь доступ к TikTok идёт через этот прокси (через yt-dlp). Включён по умолчанию.",
-  "settings.proxy.env": "Из env: {url}",
-  "settings.proxy.none": "Прокси не настроен",
-  "settings.proxy.test": "Статус прокси",
-  "settings.proxy.recheck": "Перепроверить",
-  "settings.system": "Системная информация",
-  "settings.behavior": "Поведение",
-  "settings.autoMarkSeen": "Автоматически отмечать видео просмотренными при открытии",
-  "settings.dataMode": "Режим хранения данных",
-  "settings.dataMode.local": "Сервер (SQLite)",
-  "settings.dataMode.client": "Клиент (localStorage браузера)",
-  "settings.dataMode.local.desc": "Все данные (подписки, избранное, просмотренные) хранятся на сервере в SQLite-базе. Любой, кто имеет доступ к этой странице, может видеть и удалить все данные. Подходит для одиночного использования / доверенной сети.",
-  "settings.dataMode.client.desc": "Все пользовательские данные хранятся в localStorage вашего браузера. На сервере ничего не сохраняется. Подходит для публичных инстансов с несколькими пользователями — данные каждого остаются в его браузере.",
-  "settings.dataMode.warning": "⚠️ В серверном режиме любой, кто имеет доступ к этой странице, может просмотреть и удалить ВСЕ данные (подписки, избранное, комментарии). Для публичных инстансов используйте клиентский режим.",
-  "settings.dataMode.env": "Задаётся через переменную окружения DATA_MODE (local или client). Для изменения нужен перезапуск контейнера.",
-  "settings.save": "Сохранить",
-  "settings.saved": "Настройки сохранены",
-  "settings.reset": "Сбросить по умолчанию",
-  "settings.cache": "Кэш",
-  "settings.cache.ttl": "Время жизни кэша видео (минуты)",
-  "settings.danger": "Опасная зона",
-  "settings.clearData": "Очистить все данные (подписки, избранное, комментарии)",
-  "settings.cleared": "Все данные очищены",
-
-  "theme.default": "По умолчанию (Rose)",
-  "theme.gruvbox": "Gruvbox",
-  "theme.catppuccin": "Catppuccin Mocha",
-  "theme.nord": "Nord",
-  "theme.dracula": "Dracula",
-  "theme.light": "Светлая",
-
-  "status.demo": "Демо-режим",
-  "status.demo.tip": "Включён DEMO_MODE — показываются примеры данных, реальный TikTok не запрашивается. На сервере выставите DEMO_MODE=false и укажите SOCKS5-прокси (TIKTOK_PROXY).",
-  "status.noproxy": "Без прокси",
-  "status.noproxy.tip": "TIKTOK_PROXY не задан. Запросы идут напрямую — TikTok, скорее всего, заблокирует их. Укажите SOCKS5-прокси.",
-  "status.checking": "Проверка прокси…",
-  "status.proxybad": "Прокси не работает",
-  "status.proxy": "Прокси активен",
-  "status.proxy.tip": "Весь доступ к TikTok идёт через ваш SOCKS5-прокси. Кэш видео очищается каждые {n} мин.",
-
-  "time.justNow": "только что",
-  "time.min": "мин назад",
-  "time.h": "ч назад",
-  "time.d": "дн назад",
-  "time.wk": "нед назад",
-  "time.mo": "мес назад",
-  "time.y": "г назад",
-  "common.cancel": "Отмена",
-  "common.confirm": "Подтвердить",
-};
-
-const dicts: Record<Lang, Dict> = { en, ru };
+// Keep the old locale key readable while serving English strings for it.
+const dicts: Record<Lang, Dict> = { en, ru: en };
 
 /** Translate a key with optional {placeholder} interpolation. */
 export function translate(lang: Lang, key: string, vars?: Record<string, string | number>): string {
@@ -416,8 +224,3 @@ export function translate(lang: Lang, key: string, vars?: Record<string, string 
   }
   return s;
 }
-
-export const availableLangs: { value: Lang; label: string }[] = [
-  { value: "en", label: "English" },
-  { value: "ru", label: "Русский" },
-];

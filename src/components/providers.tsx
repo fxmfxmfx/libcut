@@ -7,7 +7,6 @@ import { useSettings, useStatus } from "@/lib/tiktok/queries";
 import { useView, getLocalStorageError, localStorageErrorEvent, preferencesStorageKey, reportLocalStorageError } from "@/lib/tiktok/store";
 import { clientDataStorageKey, resetClientDataFromStorage, useClientData } from "@/lib/tiktok/client-data";
 import { audioStorageKey, useAudio } from "@/lib/tiktok/audio";
-import type { Lang } from "@/lib/tiktok/i18n";
 
 export function Providers({ children }: { children: ReactNode }) {
   const [client] = useState(
@@ -35,7 +34,6 @@ export function Providers({ children }: { children: ReactNode }) {
 function SettingsSync() {
   const { data: settingsData } = useSettings();
   const { data: statusData } = useStatus();
-  const setLang = useView((s) => s.setLang);
   const setAutoMarkSeen = useView((s) => s.setAutoMarkSeen);
   const setDataMode = useView((s) => s.setDataMode);
   const hydratePreferences = useView((s) => s.hydratePreferences);
@@ -92,7 +90,7 @@ function SettingsSync() {
   }, [statusData?.dataMode, setDataMode]);
 
   // Theme, accent, and custom CSS always belong to this browser.
-  // Local instances still share language and automatic watched marking.
+  // Local instances share automatic watched marking.
   useEffect(() => {
     // Do not let the settings query's initial/default data overwrite client
     // preferences before the status endpoint has identified this instance.
@@ -101,11 +99,8 @@ function SettingsSync() {
     if (statusData?.dataMode === "client") return;
 
     const s = settingsData.settings;
-    if (s.language && (s.language === "en" || s.language === "ru")) {
-      setLang(s.language as Lang);
-    }
     setAutoMarkSeen(s.autoMarkSeen !== "false");
-  }, [settingsData, statusData?.dataMode, setLang, setAutoMarkSeen]);
+  }, [settingsData, statusData?.dataMode, setAutoMarkSeen]);
 
   return null;
 }

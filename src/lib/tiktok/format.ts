@@ -40,7 +40,7 @@ export function timeAgo(date: Date | string | null | undefined, lang: Lang = "en
 export function fullDate(date: Date | string | null | undefined): string {
   if (!date) return "";
   const d = typeof date === "string" ? new Date(date) : date;
-  return d.toLocaleString("ru-RU", {
+  return d.toLocaleString("en-US", {
     day: "numeric",
     month: "short",
     year: "numeric",

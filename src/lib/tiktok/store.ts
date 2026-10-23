@@ -60,7 +60,6 @@ interface UIState extends Preferences {
   openVideo: (id: string, source?: { url: string; tiktokId: string }, queue?: VideoInfo[]) => void;
   closeVideo: () => void;
   setSearch: (q: string, kind?: "all" | "author" | "video") => void;
-  setLang: (l: Lang) => void;
   setTheme: (t: string) => void;
   setAccent: (c: string) => void;
   setCustomCss: (c: string) => void;
@@ -99,7 +98,7 @@ export function isValidPreferenceSet(value: unknown): value is Preferences {
 }
 
 function parsePreferences(value: unknown): Partial<Preferences> {
-  return isValidPreferenceSet(value) ? value : {};
+  return isValidPreferenceSet(value) ? { ...value, lang: "en" } : {};
 }
 
 function savePreferences(preferences: Preferences, replaceUnreadable = false) {
@@ -152,7 +151,6 @@ export const useView = create<UIState>((set, get) => ({
   closeVideo: () => set({ openVideoId: null, openVideoSource: null, openVideoQueue: [] }),
   setSearch: (q, kind) =>
     set((s) => ({ searchQuery: q, searchKind: kind ?? s.searchKind, activeTab: "search", selectedAuthor: null })),
-  setLang: (lang) => updatePreference("lang", lang, set, get),
   setTheme: (theme) => updatePreference("theme", theme, set, get),
   setAccent: (accent) => updatePreference("accent", accent, set, get),
   setCustomCss: (customCss) => updatePreference("customCss", customCss, set, get),
@@ -193,7 +191,7 @@ export const useView = create<UIState>((set, get) => ({
             : {}),
         };
         reportLocalStorageError("preferences", null);
-        const migrated = { ...defaultPreferences, ...stored };
+        const migrated = { ...defaultPreferences, ...stored, lang: "en" as const };
         if (!isValidPreferenceSet(migrated)) {
           unreadablePreferencesRaw = JSON.stringify({
             lang: window.localStorage.getItem("libcut.lang"),
@@ -224,6 +222,7 @@ export const useView = create<UIState>((set, get) => ({
 /** Explicitly replaces damaged preferences after the user confirms a backup import. */
 export function restorePreferences(preferences: Preferences) {
   if (!isValidPreferenceSet(preferences)) return;
-  useView.setState(preferences);
-  savePreferences(preferences, true);
+  const englishPreferences = { ...preferences, lang: "en" as const };
+  useView.setState(englishPreferences);
+  savePreferences(englishPreferences, true);
 }

@@ -1,8 +1,6 @@
-> English | [Русский](README.ru.md)
-
 # libcut 2.0
 
-A self-hosted TikTok viewer with subscriptions, an unwatched feed, favorites, comments, downloads, and photo galleries. No TikTok account is required. The interface supports English and Russian, six themes, accent colors, and custom CSS.
+A self-hosted TikTok viewer with subscriptions, an unwatched feed, favorites, comments, downloads, and photo galleries. No TikTok account is required. The interface is in English and includes six themes, accent colors, and custom CSS.
 
 **Use libcut on your own machine or a trusted network. There is no login or authorization system.** Client mode isolates personal browser state, but does not make an instance a hardened public service. Respect copyright and TikTok's terms.
 

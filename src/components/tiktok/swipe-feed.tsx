@@ -382,7 +382,7 @@ function FeedMedia({ video, active, muted, volume, onWatched, onAspectRatio }: {
           onTogglePlayback={togglePlayback} paused={paused || blocked} />
           : <div role="status" className="grid h-full place-items-center"><Loader2 className="size-7 animate-spin" /></div>}
         {failed && <div role="status" className="absolute inset-x-16 top-20 z-10 flex items-center justify-center gap-2 rounded-lg bg-black/60 p-2 text-center text-xs text-white/80">
-          <span>{lang === "ru" ? "Звук недоступен" : "Sound unavailable"}</span>
+          <span>Sound unavailable</span>
           <button type="button" className="min-h-9 underline" onClick={() => { setFailedSource(undefined); setAttempt((value) => value + 1); }}>{t("common.retry")}</button>
         </div>}
       </> : <>

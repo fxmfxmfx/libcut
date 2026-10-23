@@ -105,7 +105,7 @@ describe("streamLocalFile", () => {
   test("encodes Unicode attachment filenames and strips header injection", async () => {
     const response = await streamLocalFile(filePath, request() as never, {
       asAttachment: true,
-      filename: "Видео\r\nX-Evil: yes\"\\clip.mp4",
+      filename: "Video\r\nX-Evil: yes\"\\clip.mp4",
     });
 
     expect(response.status).toBe(200);

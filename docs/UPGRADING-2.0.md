@@ -1,8 +1,8 @@
-# Обновление до Libcut 2.0
+# Upgrading to Libcut 2.0
 
-## Перед обновлением
+## Before Upgrading
 
-1. Сделайте резервную копию SQLite. Для Docker Compose остановите приложение, затем скопируйте файл из тома:
+1. Back up the SQLite database. With Docker Compose, stop the application, then copy the file from the volume:
 
    ```sh
    docker compose stop libcut
@@ -10,26 +10,26 @@
    docker cp libcut:/app/db/custom.db ./backup/custom.db.pre-2.0
    ```
 
-   Контейнер должен оставаться созданным, чтобы `docker cp` мог прочитать его том. Не используйте `docker compose down -v`: эта команда удаляет именованные тома с базой и кэшем.
+   The container must still exist so `docker cp` can read its volume. Do not use `docker compose down -v`: this command deletes the named volumes containing the database and cache.
 
-2. Сохраните `.env` вне репозитория до `git pull`, например `cp .env ../libcut-env.pre-2.0`. В 2.0 этот файл исключён из Git: после обновления восстановите его командой `cp ../libcut-env.pre-2.0 .env`. Сохраните значения `DATA_MODE`, `DEMO_MODE` и `TIKTOK_PROXY`. Проверьте, что не меняете каталог или именованный том базы данных.
+2. Save `.env` outside the repository before `git pull`, for example with `cp .env ../libcut-env.pre-2.0`. In 2.0, this file is excluded from Git; after updating, restore it with `cp ../libcut-env.pre-2.0 .env`. Preserve the `DATA_MODE`, `DEMO_MODE`, and `TIKTOK_PROXY` values. Make sure you do not change the database directory or named volume.
 
-3. Если прежняя версия уже умеет экспортировать клиентскую копию, скачайте ее в **Settings → Export backup**. В старых сборках этой функции могло не быть: после запуска 2.0 сразу экспортируйте данные через Settings, прежде чем очищать данные браузера или менять браузер/домен. Настройки клиента и подписки хранятся в localStorage конкретного браузера и origin.
+3. If the previous version can export a client backup, download one through **Settings → Export backup**. Older builds may not have this feature: after starting 2.0, export the data through Settings immediately, before clearing browser data or changing browsers/domains. Client settings and subscriptions are stored in localStorage for that specific browser and origin.
 
 ## Docker Compose
 
-Из каталога проекта выполните:
+From the project directory, run:
 
 ```sh
 docker compose up -d --build
 docker compose logs -f libcut
 ```
 
-При запуске контейнер выполняет `prisma db push --skip-generate` и применяет актуальную схему к SQLite до старта Next.js. В 2.0 порт по умолчанию привязан к `127.0.0.1`. Для доступа из доверенной LAN укажите `LIBCUT_BIND` в `.env`.
+At startup, the container runs `prisma db push --skip-generate` and applies the current schema to SQLite before Next.js starts. In 2.0, the port is bound to `127.0.0.1` by default. To allow access from a trusted LAN, set `LIBCUT_BIND` in `.env`.
 
-Дождитесь сообщения о запуске приложения. Откройте сайт и проверьте подписки, избранное и ленту. В клиентском режиме импортируйте JSON-копию через Settings, если требуется восстановить данные или перенести их.
+Wait for the application startup message. Open the site and check subscriptions, favorites, and the feed. In client mode, import the JSON backup through Settings if you need to restore or move data.
 
-Для запуска без Docker установите зависимости по lock-файлу, обновите локальную схему и соберите приложение:
+To run without Docker, install dependencies from the lockfile, update the local schema, and build the application:
 
 ```sh
 bun install --frozen-lockfile
@@ -39,15 +39,15 @@ bun run build
 bun run start
 ```
 
-Перед `db:push` сохраните файл SQLite, указанный в `DATABASE_URL`.
+Back up the SQLite file specified by `DATABASE_URL` before running `db:push`.
 
-## Данные и режимы работы
+## Data and Operating Modes
 
-- В режиме `local` личные данные находятся в SQLite. Docker Compose хранит базу в именованном томе `libcut-db` по пути `/app/db/custom.db`; отдельно сохраняются загруженные медиафайлы в `libcut-cache`.
-- В режиме `client` подписки, избранное, просмотренное и пользовательские настройки хранятся в localStorage браузера. Используйте Settings для создания или импорта JSON-копии. Не очищайте данные сайта, пока не сохранили нужную копию.
-- Клиентский режим не означает, что сервер ничего не хранит: публичные сведения об авторах и видео, а также кэш поиска сохраняются в общей серверной базе.
-- Приложение рассчитано на локальное использование в доверенной сети и не предоставляет аутентификацию. Не публикуйте его в недоверенной или публичной сети как многопользовательский сервис.
+- In `local` mode, personal data is stored in SQLite. Docker Compose stores the database in the named `libcut-db` volume at `/app/db/custom.db`; downloaded media files are stored separately in `libcut-cache`.
+- In `client` mode, subscriptions, favorites, viewed items, and user settings are stored in the browser's localStorage. Use Settings to create or import a JSON backup. Do not clear site data until you have saved any backup you need.
+- Client mode does not mean the server stores nothing: public author and video information, as well as the search cache, are stored in the shared server database.
+- The application is intended for local use on a trusted network and does not provide authentication. Do not expose it to an untrusted or public network as a multi-user service.
 
-## TikTok и проверки
+## TikTok and Checks
 
-Поиск по локальной библиотеке выполняется независимо от TikTok; live-поиск, комментарии и получение новых данных зависят от доступности TikTok, настроек прокси и возможных captcha или блокировок. Успешные проверки в demo mode не гарантируют работу live-запросов в конкретной сети. Если live-функции не работают, проверьте `TIKTOK_PROXY` и логи контейнера.
+Search in the local library works independently of TikTok; live search, comments, and fetching new data depend on TikTok availability, proxy settings, and possible captchas or blocks. Successful checks in demo mode do not guarantee that live requests will work on a particular network. If live features do not work, check `TIKTOK_PROXY` and the container logs.

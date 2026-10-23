@@ -15,7 +15,6 @@ interface PhotoCarouselProps {
 
 export function PhotoCarousel({ images, title, onAspectRatio, active = true, onTogglePlayback, paused = false }: PhotoCarouselProps) {
   const t = useView((state) => state.t);
-  const lang = useView((state) => state.lang);
   const viewportRef = useRef<HTMLDivElement>(null);
   const currentRef = useRef(0);
   const suppressClick = useRef(false);
@@ -114,7 +113,7 @@ export function PhotoCarousel({ images, title, onAspectRatio, active = true, onT
     if (images[currentRef.current] === src) callbackRef.current(ratio);
   }
 
-  const errorText = lang === "ru" ? "Не удалось загрузить фото" : "Couldn't load photo";
+  const errorText = "Couldn't load photo";
   const altTitle = title.trim();
 
   return (
@@ -122,8 +121,8 @@ export function PhotoCarousel({ images, title, onAspectRatio, active = true, onT
       <div
         ref={viewportRef}
         role="region"
-        aria-label={lang === "ru" ? "Галерея фотографий" : "Photo gallery"}
-        aria-roledescription={lang === "ru" ? "карусель" : "carousel"}
+        aria-label="Photo gallery"
+        aria-roledescription="carousel"
         tabIndex={0}
         onScroll={handleScroll}
         onPointerDown={(event) => {
@@ -158,7 +157,7 @@ export function PhotoCarousel({ images, title, onAspectRatio, active = true, onT
             <div
               key={`${index}:${src}`}
               role="group"
-              aria-label={`${lang === "ru" ? "Фото" : "Photo"} ${index + 1} ${lang === "ru" ? "из" : "of"} ${images.length}`}
+              aria-label={`Photo ${index + 1} of ${images.length}`}
               className="relative flex h-full w-full shrink-0 snap-start snap-always items-center justify-center overflow-hidden"
             >
               {shouldLoad && !isFailed && <>
